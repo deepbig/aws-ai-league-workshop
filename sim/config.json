@@ -1,0 +1,44 @@
+{
+  "_comment": "모든 값은 관찰 기반 [추론] 기본치. 워크샵 당일 '극대화하는 방법/추가 규칙/챌린지·보너스'를 보고 실제 값으로 교체할 것.",
+
+  "map": {
+    "width": 10,
+    "height": 10,
+    "wall_ratio": 0.18,
+    "seed": 42
+  },
+
+  "budget": {
+    "time_steps": 60,
+    "lives": 3,
+    "move_cost_steps": 1,
+    "solve_cost_steps": 2
+  },
+
+  "coins": {
+    "count": 22,
+    "value_min": 50,
+    "value_max": 300,
+    "_note": "당일: 코인 가치 차등 여부 확인 → value_min==value_max면 균일"
+  },
+
+  "challenges": {
+    "count": 6,
+    "score_per_solved": 500,
+    "wrong_penalty_score": 200,
+    "wrong_penalty_lives": 1,
+    "llm_guess_accuracy": 0.55,
+    "_note": "llm_guess_accuracy = 코드 없이 암산 시 정답률(추정). 코드풀이는 1.0 가정"
+  },
+
+  "treasure": {
+    "present": true,
+    "bonus_score": 1000
+  },
+
+  "bonus": {
+    "consecutive_solve_bonus": 0,
+    "early_finish_bonus_per_step": 0,
+    "_note": "당일: 보너스 탭 확인 후 채움"
+  }
+}

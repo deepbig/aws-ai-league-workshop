@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.pdf_work/
+.DS_Store
