@@ -27,11 +27,22 @@
 - **FULL(N~28)**: 최적 계산 불가(2^28). 장기 ILS를 레퍼런스로 상대 우열 + 절대점수.
 - 결과: ILS/BEST가 N≤18에서 **최적의 99.8~100%** → 라우팅은 사실상 해결.
 
+## 강건성 검증 (변수 상황 = 워크샵 핵심)
+
+`sim/robustness.py`: 당일 나올 수 있는 **여러 규칙 레짐**(챌린지중심·페널티중심·
+코인차등·시간촉박 등)에서, 권장 에이전트 정책(강한 navigate + 챌린지 코드풀이)이
+각 레짐의 **진짜 최적해**(Held-Karp)에 계속 근접하는지 확인.
+
+실측: **6개 레짐 전부에서 정책 = 진짜 최적의 100%** (naive 32~72%).
+→ "프롬프트/구조 불변, `score_model` 값만 교체"로 미지의 당일 규칙에 적응 가능함을 입증.
+이것이 [docs/09-agent-design.md](09-agent-design.md) §3의 근거.
+
 ## 실행
 
 ```bash
+python3 sim/robustness.py     # ★ 규칙 변동 강건성 (정책 vs 진짜 최적, 레짐별)
 python3 sim/run.py            # 빠른 요약 (레버 A/B)
-python3 sim/bench.py          # 3단계 정밀 벤치 (SMALL/MID/FULL, %opt)
+python3 sim/bench.py          # Navigator Tool 알고리즘 벤치 (SMALL/MID/FULL, %opt)
 python3 sim/bench.py 60       # seed 수 지정
 ```
 
