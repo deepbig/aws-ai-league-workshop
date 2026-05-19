@@ -1,59 +1,58 @@
-"""전략 레버 ablation 러너.
+"""빠른 요약 러너 — 1등 전략의 두 핵심 레버를 한 번에 확인.
 
-사용:
-  python3 sim/run.py            # 기본 30 에피소드
-  python3 sim/run.py 100        # 100 에피소드
+  python3 sim/run.py            # 기본 40 seed
+  python3 sim/run.py 80
 
-config.json 값을 워크샵 당일 [확정]값으로 바꾼 뒤 다시 실행해
-어떤 전략 분기가 최고 점수인지 확인한다.
+상세 최적성 검증은: python3 sim/bench.py
 """
+from __future__ import annotations
+
 import statistics
 import sys
 
 from agent import Strategy, play_episode
 from game import Game, load_config
-
-SCENARIOS = {
-    "Baseline (암산+최근접)":            Strategy(False, False, False),
-    "+코드풀이":                          Strategy(True,  False, False),
-    "+예산경로":                          Strategy(False, True,  False),
-    "+메모리":                            Strategy(False, False, True),
-    "Full (전부 ON)":                     Strategy(True,  True,  True),
-}
+from planners import PLANNERS
 
 
-def run(n_episodes: int) -> None:
+def _mean_score(cfg, planner, seeds):
+    sc = []
+    for s in seeds:
+        g = Game(cfg=cfg, seed=s)
+        r = PLANNERS[planner](g.dist, g.nodes, cfg["budget"]["time_steps"])
+        sc.append(g.evaluate(r, cfg["budget"]["time_steps"])[0])
+    return statistics.mean(sc)
+
+
+def main(n):
     cfg = load_config()
-    print(f"에피소드/시나리오: {n_episodes}  | config: map "
-          f"{cfg['map']['width']}x{cfg['map']['height']}, "
-          f"time {cfg['budget']['time_steps']}, lives {cfg['budget']['lives']}\n")
+    seeds = list(range(n))
+    m = cfg["map"]
+    print(f"map {m['width']}x{m['height']} | budget {cfg['budget']['time_steps']}"
+          f" | coins {cfg['coins']['count']} ch {cfg['challenges']['count']}"
+          f" | seeds {n}\n")
 
-    header = f"{'시나리오':<22}{'평균점수':>10}{'중앙값':>10}{'표준편차':>10}{'코인잔여':>9}{'챌린지잔여':>11}"
-    print(header)
-    print("-" * len(header))
+    # 레버 A: 라우팅 품질 (낮은→높은)
+    print("[레버 A] 경로 플래너별 평균 점수 (라우팅이 최대 점수원)")
+    base = None
+    for name in ("nearest", "greedy", "greedy+LS", "GRASP", "ILS", "SA", "BEST(앙상블)"):
+        mean = _mean_score(cfg, name, seeds)
+        if base is None:
+            base = mean
+        print(f"  {name:<13}{mean:>9.0f}  ({mean - base:+.0f} vs nearest)")
 
-    baseline_mean = None
-    for name, strat in SCENARIOS.items():
-        scores, coins_left, ch_left = [], [], []
-        for ep in range(n_episodes):
-            g = Game(cfg=cfg, seed=ep)
-            r = play_episode(g, cfg, strat, seed=ep)
-            scores.append(r["score"])
-            coins_left.append(r["coins_left"])
-            ch_left.append(r["challenges_left"])
-        mean = statistics.mean(scores)
-        if baseline_mean is None:
-            baseline_mean = mean
-        med = statistics.median(scores)
-        sd = statistics.pstdev(scores)
-        delta = "" if name.startswith("Baseline") else f"  ({mean - baseline_mean:+.0f} vs base)"
-        print(f"{name:<22}{mean:>10.0f}{med:>10.0f}{sd:>10.0f}"
-              f"{statistics.mean(coins_left):>9.1f}{statistics.mean(ch_left):>11.1f}{delta}")
+    # 레버 B: 챌린지 코드풀이 vs 암산 (동일 BEST 라우팅 위)
+    print("\n[레버 B] 챌린지 처리: 코드풀이 vs LLM 암산 (BEST 라우팅 고정)")
+    for label, code in (("코드풀이(권장)", True), ("LLM 암산", False)):
+        sc = []
+        for s in seeds:
+            g = Game(cfg=cfg, seed=s)
+            sc.append(play_episode(g, cfg, Strategy("BEST(앙상블)", code), s)["score"])
+        print(f"  {label:<14}{statistics.mean(sc):>9.0f}")
 
-    print("\n해석: 각 레버의 '평균점수 vs base' 증가폭 = 워크샵 당일 우선순위 근거.")
-    print("      config.json을 [확정]값으로 교체 후 재실행하면 분기 우열이 갱신됨.")
+    print("\n→ 결론: 강한 라우팅(BEST/ILS) + 챌린지 코드풀이 결합이 최고 점수.")
+    print("  최적해 대비 검증은 sim/bench.py (SMALL/MID에서 %EXACT 확인).")
 
 
 if __name__ == "__main__":
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    run(n)
+    main(int(sys.argv[1]) if len(sys.argv) > 1 else 40)

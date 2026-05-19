@@ -25,10 +25,11 @@
   "challenges": {
     "count": 6,
     "score_per_solved": 500,
+    "solve_cost_steps": 2,
     "wrong_penalty_score": 200,
     "wrong_penalty_lives": 1,
     "llm_guess_accuracy": 0.55,
-    "_note": "llm_guess_accuracy = 코드 없이 암산 시 정답률(추정). 코드풀이는 1.0 가정"
+    "_note": "solve_cost_steps = 챌린지 도착 후 풀이 소모 스텝. llm_guess_accuracy = 코드 없이 암산 시 정답률(추정), 코드풀이는 1.0"
   },
 
   "treasure": {

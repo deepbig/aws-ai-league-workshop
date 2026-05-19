@@ -14,6 +14,7 @@ AWS AI League 워크샵(경쟁형 핸즈온)에서 **최고 점수로 1등**을 
 - **무엇으로 만드나**: **Amazon Bedrock AgentCore** 중심. Supervisor + Sub-Agents 멀티에이전트 구조에 **Memory / Tools(Gateway) / Guardrails / Lambda**를 연결. 코드는 SageMaker 내장 에디터 + Lambda(Python).
 - **게임 목표(확정)**: *"보물을 찾으면서 모든 코인을 수집하고 챌린지를 물리치세요!"* — 코인(점수), 생명 3개, 카운트다운 타이머, 챌린지(추론/수학 문제) 풀이.
 - **핵심 변수**: ① 경로탐색(코인·보물 효율) ② 챌린지 정답률(코드 실행으로 계산) ③ Memory 활용 ④ 시간·생명 리스크 관리 ⑤ 프롬프트 엔지니어링.
+- **시뮬레이션 규명(완료)**: 게임을 Orienteering 문제로 환원 → 강한 플래너(ILS/앙상블)가 **진짜 최적해의 99.8~100%** 달성(Held-Karp DP로 검증). 실시간용 `greedy+LS`는 ~99.8%·15ms. 단순 그리디 대비 **약 +17%**. 상세 [docs/08](docs/08-routing-findings.md).
 - **중요**: **세부 채점식·보너스·챌린지·추가 규칙은 워크샵 당일 공개**됩니다. 안내자료의 해당 영역은 의도적으로 가려져 있음 → 본 저장소는 *관찰로 확정된 것*과 *추론*, *당일 확인 필요*를 명확히 구분해 정리.
 
 ---
@@ -29,7 +30,8 @@ AWS AI League 워크샵(경쟁형 핸즈온)에서 **최고 점수로 1등**을 
 | [docs/05-prep-checklist.md](docs/05-prep-checklist.md) | **행사 전 필수 준비** 체크리스트 |
 | [docs/06-winning-strategy.md](docs/06-winning-strategy.md) | **1등 전략** — 점수 극대화 플레이북 |
 | [docs/07-simulation-plan.md](docs/07-simulation-plan.md) | 시뮬레이터 설계 + 당일 운영 루프 |
-| [sim/](sim/) | 실행 가능한 **로컬 시뮬레이터 스켈레톤** (전략 사전 검증용) |
+| [docs/08-routing-findings.md](docs/08-routing-findings.md) | **시뮬레이션 결과** — 점수 최대화 경로 방법 규명(최적해 99.8%+) |
+| [sim/](sim/) | 실행 가능한 **시뮬레이터** (플래너 7종 + 진짜 최적해 검증) |
 
 ## 표기 규칙
 
