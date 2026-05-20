@@ -4,10 +4,12 @@
 
 | 파일 | 용도 |
 |---|---|
+| **[orchestration.md](orchestration.md)** | **★ UI 슬롯 배치도** (당일 브라우저에서 무엇을 어디에 넣을지) |
 | [prompts/supervisor.md](prompts/supervisor.md) | Supervisor 시스템 프롬프트 (매 턴 단일 행동, 정책=score_model 함수) |
-| [prompts/navigator.md](prompts/navigator.md) | Navigator — navigate Tool에 경로 위임 |
-| [prompts/challenge-solver.md](prompts/challenge-solver.md) | Challenge Solver — Code Interpreter로 100% 정답 |
-| [prompts/memory-recon.md](prompts/memory-recon.md) | Recon(규칙 구조화) + Memory(world model) |
+| [prompts/navigator.md](prompts/navigator.md) | Pathfinder — `Pathfinding` Lambda에 경로 위임 |
+| [prompts/challenge-solver.md](prompts/challenge-solver.md) | Code Specialist — CodeExecution 도구로 100% 정답 |
+| [prompts/memory-recon.md](prompts/memory-recon.md) | Memory Curator — Recon(규칙 구조화) + world model |
+| [lambdas/pathfinding.py](lambdas/pathfinding.py) | **★ SageMaker 에디터에 그대로 붙여넣을 Lambda 코드** |
 | [tools.md](tools.md) | `navigate` / `solve_challenge` / `memory_io` Tool 입출력 계약 |
 | [guardrails.md](guardrails.md) | 출력 스키마·행동 유효성·규칙 준수 강제 |
 | [memory-schema.md](memory-schema.md) | Memory 키 + `score_model` 구조 |
@@ -20,9 +22,10 @@
 3. **정책 = score_model 함수** — 당일 규칙이 바뀌어도 프롬프트 불변, 값만 교체.
    강건성 실측: 6개 규칙 레짐 전부 진짜 최적의 100% (`sim/robustness.py`).
 
-## 당일 적용 순서
+## 당일 적용 순서 (브라우저에서 ~10분)
 
-1. Recon: 인게임 규칙/탭 + 워크숍 스튜디오 문서 → `memory-schema.md`의 `score_model` 채움.
-2. 같은 값을 `sim/config.json`에 입력 → `python3 sim/bench.py`로 우선순위 사전 확인.
-3. `prompts/`·`tools.md`·`guardrails.md`를 AgentCore에 이식, `<<자리표시자>>` 채움.
-4. 플레이 → 로그 → 실패유형 1개 수정 → 재플레이 (adaptation-playbook 루프).
+1. **도구 등록**: Memory 인스턴스 + Guardrails(`guardrails.md` 정책) + Lambda(`lambdas/pathfinding.py` 코드 그대로 붙여넣기).
+2. **슈퍼바이저 설정**: `prompts/supervisor.md` 본문을 시스템 프롬프트로.
+3. **서브 에이전트 3종 추가**: Pathfinder / Code Specialist / Memory Curator (각각 `prompts/`의 해당 파일). 슬롯 배치 상세 → [orchestration.md](orchestration.md).
+4. **Recon → 보드 플레이**: 인게임 규칙/탭 + 워크숍 스튜디오 문서 → `memory-schema.md`의 `score_model` 채움 → 같은 값을 `sim/config.json`에 넣고 `python3 sim/bench.py`로 사전 검증.
+5. **반복 개선**: 플레이 → 로그 → 실패유형 1개 수정 → 재플레이 ([adaptation-playbook.md](adaptation-playbook.md)).

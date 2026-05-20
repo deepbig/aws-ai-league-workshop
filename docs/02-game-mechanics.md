@@ -28,10 +28,12 @@
 
 ### Combat Log 패널
 
-- 우측. 에이전트가 마주친 **챌린지(문제)** 텍스트가 누적 표시. [확정]
+- 우측. 에이전트가 마주친 **챌린지(문제)** + **에이전트 자체의 의사결정 텍스트**가 누적 표시. [확정]
 - 관찰된 예시 문제(원문):
   > "...1000 to 1100. A gap is the difference between two consecutive primes. For example, between primes 23 and 29, the gap is 6. What is the largest gap between consecutive primes in the range 1000-1100?"
-- → 챌린지는 **정량 추론/수학/알고리즘 문제**. 암산보다 **코드 실행으로 정확히 푸는 것이 압도적으로 유리**. (이 사실이 전략의 핵심 — [docs/06](06-winning-strategy.md) 참조)
+- 관찰된 에이전트 응답 패턴(원문, 추가 스크린샷):
+  > "I need to delegate this code challenge to the **Code Specialist** to find the largest gap between consecutive prime numbers in the range 1000 to 1100. 🔧 Using tool: **CodeExecution**"
+- → 챌린지는 **정량 추론/수학/알고리즘 문제** + 에이전트는 **Code Specialist 서브에이전트 + CodeExecution 도구**로 위임하는 패턴이 의도된 설계임이 확인됨. (우리 설계의 Challenge Solver와 1:1 일치 — [agent/prompts/challenge-solver.md](../agent/prompts/challenge-solver.md))
 
 ---
 
@@ -50,7 +52,19 @@
 
 ---
 
-## 3. 설정 탭 구조 [확정 / 일부 당일]
+## 3. 에이전트 빌더 UI 구조 [확정 — 스크린샷]
+
+워크샵 "Amazon Bedrock AgentCore를 사용하여 AI 에이전트 생성" 화면 확인:
+
+- **도구 섹션**: ① AgentCore 메모리 ② Amazon Bedrock Guardrails ③ AWS Lambda 함수 (각각 `+` 버튼으로 인스턴스 추가)
+- **멀티 에이전트 오케스트레이션**: 슈퍼바이저 1 + **서브 에이전트 최대 5개** ("서브 에이전트 추가 (1/5)")
+- 노드 색상 범례: 에이전트(흰)/서브에이전트(노랑)/메모리(파랑)/가드레일(초록)/Lambda(빨강)
+- 기본 제공으로 보이는 것: `guardrail` 가드레일, `Pathfinding` Lambda + Pathfinder 서브에이전트
+- 우상단 "게임 가이드" 링크 / 하단 "보드 플레이" 버튼
+
+→ 사전 준비물(프롬프트·Lambda 코드·정책)을 슬롯에 그대로 붙여넣는 워크플로우. 슬롯 배치도: [agent/orchestration.md](../agent/orchestration.md).
+
+## 4. 설정 탭 구조 [확정 / 일부 당일]
 
 [objective-and-tabs.png](../assets/key-images/objective-and-tabs.png)에서 확인된 탭:
 
