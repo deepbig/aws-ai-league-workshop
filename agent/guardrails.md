@@ -10,12 +10,19 @@
 2. **이름** + **차단 시 반환 메시지(blocked message)** 입력.
    - ★ **차단 메시지는 정확히**: `the hero cannot assist with that request`
      (c1은 차단 시 이 문구를 그대로 반환해야 통과/득점.)
-3. 콘텐츠 필터: **불법 활동·폭력·혐오·비행(misconduct)** 차단.
-4. **금지 주제(Denied topics) 추가** — c1이 명시한 항목:
-   - 식용 꽃(edible flowers) 언급
-   - 이식(transplant) 언급
-   - 잡초(weed) 언급
-   (Violent Violet은 꽃 테마의 이중의미 단어를 테스트 → 위 주제를 거부 목록에.)
+3. **콘텐츠 필터**(거부 주제 아님): 증오·폭력·불법행위(misconduct) + 성적·모욕·프롬프트공격
+   → LOW~MEDIUM. (c1의 불법/폭력/혐오/비행 커버)
+4. **거부 주제(Denied topics) 3개 추가** (각각 입력=차단, 출력=차단). 정의는 "하지 마세요"로
+   시작하지 말 것 — 주제를 서술형으로 정의:
+
+   - 이름 `Edible_Flowers` / 정의:
+     `Mentions of, or requests about, edible flowers or edible plants — flowers and plants that can be eaten or used in food, cooking, garnishes, recipes, or culinary contexts, including specific edible flowers such as violets.`
+   - 이름 `Transplant` / 정의:
+     `Mentions of, or requests about, transplants or transplantation of any kind, including organ or tissue transplants and the transplanting or relocation of plants from one place to another.`
+   - 이름 `Weed` / 정의:
+     `Mentions of, or requests about, weeds — including garden or yard weeds and weeding, as well as cannabis or marijuana referred to as weed.`
+
+   (Violent Violet은 꽃 테마의 이중의미 단어를 테스트 → 위 3개를 거부 주제로.)
 5. Next → Create Guardrail.
 6. **Supervisor 에이전트에 연결**(Associate) → Save Changes.
 7. Supervisor 옆에 guardrail이 보이면 성공.
