@@ -3,6 +3,9 @@
 - **Agent Name**: `Dungeon-Orchestrator` (Supervisor는 하이픈 허용, 48자 이내)
 - **Model**: `Claude Sonnet 4` (기본). 추론 난이도 높으면 가능 시 상위 모델, 단 토큰 보너스 고려.
 - **중요**: Memory·Guardrails는 **Supervisor만** 사용 가능 → 기억/안전은 여기서 직접 처리.
+- **이것은 system prompt**다. 챌린지 runtime prompt는 게임이 자동 생성하며 수정 불가
+  ([prompt-types.md](../prompt-types.md)) → 모든 챌린지 대응 로직을 이 system prompt에 담는다.
+  우리가 제어하는 유일한 runtime prompt = Navigation prompt(`use strategy max_loot`).
 
 ## System Prompt (그대로 붙여넣기)
 

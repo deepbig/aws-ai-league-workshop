@@ -5,6 +5,7 @@
 | 파일 | 용도 |
 |---|---|
 | **[orchestration.md](orchestration.md)** | **★ UI 슬롯 배치도** (당일 브라우저에서 무엇을 어디에 넣을지) |
+| **[prompt-types.md](prompt-types.md)** | **★ System vs Runtime 프롬프트** — 제어 가능한 건 Navigation prompt뿐 |
 | [prompts/supervisor.md](prompts/supervisor.md) | **Supervisor** `Dungeon-Orchestrator` — 오케스트레이션 + Memory + Guardrails + 일반상식/안정성 직접 처리 |
 | [prompts/navigator.md](prompts/navigator.md) | `Pathfinding` 서브(기본 제공) — Pathfinding Lambda(막힘 회피·장애물 우회) |
 | [prompts/challenge-solver.md](prompts/challenge-solver.md) | `Code_Specialist` 서브 — 수학/알고리즘 (코드 실행) |
