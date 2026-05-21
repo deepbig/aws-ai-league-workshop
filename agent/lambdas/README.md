@@ -9,6 +9,29 @@
 | 파일 | UI 이름 | 용도 |
 |---|---|---|
 | [pathfinding.py](pathfinding.py) | `pathfinding-lambda` | 보물=종착 전략 경로(swift/get_coins/avoid_spikes/get_challenges/**max_loot**) |
+| [code_executor.py](code_executor.py) | `code-executor` | c2 Blue Brain — Python 코드 **실행**(계산). Code_Specialist 연결 |
+| [web_scraper.py](web_scraper.py) | `web-scraper` | c4 Dark Prophet — URL 스크래핑(stdlib만). Web_Researcher 연결 |
+
+> 나머지 챌린지는 Lambda 불필요: c1=Guardrails, c3/c30/c40=Memory+추론, c5/c18=프롬프트.
+> (c18·c30은 LLM 추론이라 람다 안에서 LLM 쓰면 실격 → 프롬프트/에이전트가 직접 처리.)
+
+## code-executor 계약 (c2)
+
+```json
+event(body) = { "code": "<python source: print()로 결과 출력 또는 result 변수>" }
+return       = { "ok": true, "result": "<stdout 또는 result>" }
+```
+- Code_Specialist(LLM)가 코드를 작성 → 이 람다가 **실행만** 한다(외부 모델 호출 없음 = 실격 아님).
+- 자가검증: 3000번째 피보나치 마지막 10자리 → `6709796000`.
+
+## web-scraper 계약 (c4)
+
+```json
+event(body) = { "url": "https://...", "max_chars": 4000 }
+return       = { "ok": true, "url": "...", "title": "...", "text": "<태그 제거 본문>" }
+```
+- `urllib.request` + `html.parser`만 사용(**추가 종속성 설치 불가** 준수).
+- Web_Researcher가 질문에서 URL을 추출해 호출 → 반환 텍스트에서 답을 해석.
 
 ## 실제 인터페이스 (게임 원본과 동일)
 
