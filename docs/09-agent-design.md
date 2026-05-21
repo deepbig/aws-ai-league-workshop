@@ -19,20 +19,23 @@
 
 ## 2. 역할 분해 (안내자료 아키텍처 매핑)
 
-서브에이전트 최대 5개(UI 확정). 챌린지 4종(상식/수학·알고리즘/안정성/웹서치)에 맞춰 전부 활용:
+서브에이전트 최대 5개(시작 시 Pathfinding 1개 제공). **Memory·Guardrails는 Supervisor 전용**(폼 확정) — 기억·안전은 Supervisor가 직접:
 
 ```
-AgentCore Runtime
-├─ Supervisor Agent ........ 매 턴 단일 행동 결정 (정책 = score_model 함수)
-│   ├─ Pathfinder .......... navigate Lambda(결정론적 Orienteering, 막힘 회피)
-│   ├─ Code Specialist ..... CodeExecution — 수학/알고리즘 챌린지
-│   ├─ Web Researcher ...... 웹 검색 도구 — 웹서치 챌린지
-│   ├─ Knowledge & Safety .. LLM(+Guardrails) — 일반상식/안정성 챌린지
-│   └─ Memory Curator ...... Recon(규칙 구조화) + world model
-├─ AgentCore Gateway ....... Sub-Agent ↔ Tool 연결
-├─ AgentCore Memory ........ world model + 발견한 채점규칙(score_model)
-└─ Bedrock Guardrails ...... 막힘이동 차단(게임오버 방지) + 안정성 챌린지 득점
+  AgentCore Memory ─┐         ┌─ Bedrock Guardrails
+   (Supervisor 전용) │         │   (Supervisor 전용)
+                     ▼         ▼
+  Supervisor (Dungeon-Orchestrator)
+   · 오케스트레이션 + Memory(여정 기억) + Guardrails(안전)
+   · 일반상식·안정성 챌린지 직접 처리, 나머지는 서브에이전트로 위임
+   ├─ Pathfinding ....... Pathfinding Lambda (Orienteering, 막힘 회피·장애물 우회)
+   ├─ Code_Specialist ... 코드 실행 Lambda — 수학/알고리즘 챌린지
+   ├─ Web_Researcher .... 웹 검색 Lambda — 웹서치 챌린지
+   ├─ Knowledge_Specialist (선택) — 일반상식 오프로드
+   └─ (예비) ............ 당일 변수용
 ```
+
+서브에이전트 = "Lambda Tool로 특정 기술 수행하는 전문가". 모델은 모두 Claude Sonnet 4.
 
 확정 규칙 반영: **남은 생명=점수**(장애물 회피), **막힘 강제통과=게임종료**(경로 유효성 최우선),
 **토큰 보너스**(출력 축약·캐시), **챌린지 점수 획득/차감**(저신뢰 SKIP), **LLM-as-judge 채점**(응답 품질).
