@@ -54,9 +54,33 @@ DELEGATE by map key (don't do their jobs yourself):
 - c6 Boss (all skills)   -> orchestrate: combine code, web, memory, and safe answering.
 - c7 coins / c8 spikes are handled by Pathfinding (collect coins, avoid spikes).
 
+CHALLENGE SPECIFICS (memorize — exact output matters; an LLM judge checks format):
+- c1 Violent Violet (+400): Guardrails handles harmful + edible-flower/transplant/weed
+  topics. When blocking, the reply must be EXACTLY: the hero cannot assist with that request
+- c2 Blue Brain (+600): delegate to Code Specialist (code execution).
+- c3 Memento (+550): answer from MEMORY about the map (e.g. "how many c5 on the map").
+  So during exploration, store map metadata in Memory: count & positions of each cN.
+- c4 Dark Prophet (+800): delegate to Web Researcher (scrape the named site; stdlib only).
+- c5 Bonehead (+250): answer yourself in the FEWEST tokens (e.g. "4"). Token bonus matters.
+- c18 Medical API (+500): convert the English sentence to the exact JSON schema
+  {patient_id,first_name,last_name,provider_name,insurance_id}. Output JSON ONLY, missing
+  fields = null, no inference, exact lowercase_underscore field names, no extra fields.
+- c40 Red Key (+50): get the key; STORE the code it gives you in Memory; reply EXACTLY: 감사합니다
+- c30 Red Door (+1000, WRONG = LOSE 5 LIVES): attempt ONLY after you hold the c40 key.
+  Take the code from Memory, REVERSE it (Hello -> olleH), and answer. If you do not have
+  the key, DO NOT engage c30 — a keyless attempt costs 5 lives (~1250 points).
+- c6 Boss: orchestrate code + web + memory + safe answering together.
+
 RECON FIRST: read the in-game Rules / Tools & Strategy / Bonuses / Challenges info.
-Each challenge lists: how to solve, damage if wrong, reward if correct, and its mapId
-(c1..cN). Store this scoring model in Memory and let it drive priorities.
+Each challenge lists: how to solve, damage if wrong, reward if correct, and its mapId.
+Store this scoring model in Memory and let it drive priorities.
+
+SCORING NUMBERS: coin c7 = +250; treasure = +2000 AND ends the game (reach it LAST, but
+DO reach it — missing it loses +2000 and the life bonus); each remaining life = +250
+(start with 5); token bonus up to +1000 = 1000 - (total tokens / challenges visited),
+so keep every answer short. A wrong answer costs 1 life (= -250); attempt a challenge only
+if reward x confidence clearly beats 250 x (chance wrong). Code/JSON/memory challenges are
+near-certain -> attempt; reach c40 before c30.
 
 EACH TURN pick the SINGLE action with highest (expected coins ÷ time+life cost):
 - Prefer high-value reachable rewards within remaining time.
@@ -182,10 +206,11 @@ use strategy max_loot
 
 ---
 
-## ⑧ Guardrails 설정 메모
-- Supervisor에 연결. 이름 + 차단 메시지(예: `I can't help with that request.`).
-- **민감도 LOW~MEDIUM에서 시작.** 챌린지(특히 c1 Violent Violet)가 막히면 한 단계씩 ↓.
-- c1 허용 범위(규칙 문구)를 확인해 그 수위는 통과시킬 것. 과차단 = 점수 손실.
+## ⑧ Guardrails 설정 (c1 Violent Violet) — Supervisor에 연결
+- **차단 메시지 정확히**: `the hero cannot assist with that request`
+- 차단 대상: 불법·폭력·혐오·비행 + **식용 꽃 / 이식(transplant) / 잡초(weed)** 언급
+- **민감도 LOW~MEDIUM 시작.** 정상 질문까지 막히면 한 단계씩 ↓ (과차단 = 점수 손실).
+- 전체 챌린지 표·전략: [challenges.md](challenges.md)
 
 ---
 

@@ -32,11 +32,23 @@ DIRECTIONS = [(-1, 0, "up"), (1, 0, "down"), (0, -1, "left"), (0, 1, "right")]
 
 COINS = {"c7"}
 SPIKES = {"c8"}
-CHALLENGES = {"c1", "c2", "c3", "c4", "c5", "c6"}
 
-# 경로 우선순위용 가치 추정(정답 아님, 자유 수정). 당일 실제 보상으로 보정.
-CELL_VALUE = {"c7": 250, "c2": 600, "c4": 500, "c5": 200, "c3": 400, "c1": 300, "c6": 1000}
-SPIKE_PENALTY = 50  # 스파이크 회피 강도(경로 비용 가산)
+# 확정 보상(경로 우선순위용 가치, 정답 아님). 미정 cN은 기본값 사용.
+CELL_VALUE = {"c7": 250, "c1": 400, "c2": 600, "c3": 550, "c4": 800,
+              "c5": 250, "c6": 1000, "c18": 500, "c30": 1000, "c40": 50}
+DEFAULT_CHALLENGE_VALUE = 400
+SPIKE_PENALTY = 50   # 스파이크 회피 강도(경로 비용 가산)
+KEY_CELL = "c40"     # 빨간 열쇠
+DOOR_CELL = "c30"    # 빨간 문 (열쇠 없이 밟으면 ♥-5 → 열쇠 뒤에만 방문)
+
+
+def _is_challenge(v):
+    return isinstance(v, str) and len(v) > 1 and v[0] == "c" and v[1:].isdigit() \
+        and v not in COINS and v not in SPIKES
+
+
+def _cell_value(v):
+    return CELL_VALUE.get(v, DEFAULT_CHALLENGE_VALUE if _is_challenge(v) else 0)
 
 
 def lambda_handler(event, context=None):
@@ -85,8 +97,8 @@ def _find(game_map, rows, cols, kind):
     return None
 
 
-def _cells_in(game_map, rows, cols, kinds):
-    return [(r, c) for r in range(rows) for c in range(cols) if game_map[r][c] in kinds]
+def _cells_where(game_map, rows, cols, pred):
+    return [(r, c) for r in range(rows) for c in range(cols) if pred(game_map[r][c])]
 
 
 # ----- 스파이크 가중 Dijkstra (이동 경로 복원) --------------------------
@@ -121,33 +133,45 @@ def _moves_to(parent, goal):
 
 # ----- 전략 디스패치 ---------------------------------------------------
 def _plan(game_map, rows, cols, start, treasure, strategy):
+    is_coin = lambda v: v in COINS
+    is_coin_or_chal = lambda v: v in COINS or _is_challenge(v)
     if strategy == "swift":
         return _route(game_map, rows, cols, [], start, treasure, 0)
     if strategy == "get_coins":
-        return _ordered(game_map, rows, cols, start, treasure, COINS, 0)
+        return _ordered(game_map, rows, cols, start, treasure, is_coin, 0)
     if strategy == "avoid_spikes":
-        return _ordered(game_map, rows, cols, start, treasure, COINS, SPIKE_PENALTY)
+        return _ordered(game_map, rows, cols, start, treasure, is_coin, SPIKE_PENALTY)
     if strategy == "get_challenges":
-        return _ordered(game_map, rows, cols, start, treasure, COINS | CHALLENGES, SPIKE_PENALTY)
+        return _ordered(game_map, rows, cols, start, treasure, is_coin_or_chal, SPIKE_PENALTY)
     # max_loot (권장)
-    return _ordered(game_map, rows, cols, start, treasure, COINS | CHALLENGES, SPIKE_PENALTY)
+    return _ordered(game_map, rows, cols, start, treasure, is_coin_or_chal, SPIKE_PENALTY)
 
 
-def _ordered(game_map, rows, cols, start, treasure, target_kinds, spike_penalty):
+def _ordered(game_map, rows, cols, start, treasure, pred, spike_penalty):
     """가치/거리 탐욕 순서로 타깃 방문 후 보물. 이동 경로(moves) 반환."""
-    targets = set(_cells_in(game_map, rows, cols, target_kinds))
+    targets = set(_cells_where(game_map, rows, cols, pred))
     targets.discard(start)
-    order, cur = [], start
+    # 안전: 빨간 문(c30)은 빨간 열쇠(c40)가 맵에 있을 때만 방문(없으면 ♥-5).
+    has_key = any(game_map[r][c] == KEY_CELL for (r, c) in targets)
+    if not has_key:
+        targets = {t for t in targets if game_map[t[0]][t[1]] != DOOR_CELL}
+    order, cur, key_taken = [], start, False
     while targets:
         dist, _ = _dijkstra(game_map, rows, cols, cur, spike_penalty)
         best, best_ratio = None, -1.0
         for t in targets:
+            v = game_map[t[0]][t[1]]
+            # 열쇠 먼저: 열쇠를 아직 안 집었으면 문은 후보에서 제외
+            if v == DOOR_CELL and not key_taken:
+                continue
             if t in dist and dist[t] > 0:
-                ratio = CELL_VALUE.get(game_map[t[0]][t[1]], 0) / dist[t]
+                ratio = _cell_value(v) / dist[t]
                 if ratio > best_ratio:
                     best, best_ratio = t, ratio
         if best is None:
             break
+        if game_map[best[0]][best[1]] == KEY_CELL:
+            key_taken = True
         order.append(best)
         targets.discard(best)
         cur = best

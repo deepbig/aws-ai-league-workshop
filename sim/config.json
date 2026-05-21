@@ -10,40 +10,43 @@
 
   "budget": {
     "time_steps": 60,
-    "lives": 3,
-    "life_value": 300,
+    "lives": 5,
+    "life_value": 250,
     "move_cost_steps": 1,
     "solve_cost_steps": 2,
-    "_note": "time_steps=제한시간 5분의 스텝 환산(당일 보정). life_value=남은 생명 1개당 점수(생명=점수, 확정)"
+    "_note": "확정: 생명 5개 시작, 남은 생명당 +250(최대 +1250). time_steps=5분 스텝 환산(당일 보정)"
   },
 
   "coins": {
     "count": 22,
-    "value_min": 50,
-    "value_max": 300,
-    "_note": "당일: 코인 가치 차등 여부 확인 → value_min==value_max면 균일"
+    "value_min": 250,
+    "value_max": 250,
+    "_note": "확정: c7 코인 = 개당 +250 (균일)"
   },
 
   "challenges": {
     "count": 6,
     "score_per_solved": 500,
     "solve_cost_steps": 2,
-    "wrong_penalty_score": 200,
+    "wrong_penalty_score": 0,
     "wrong_penalty_lives": 1,
     "llm_guess_accuracy": 0.55,
-    "types": ["math", "web", "knowledge", "safety"],
     "policy_accuracy": 1.0,
-    "_note": "4종 챌린지(상식/수학·알고리즘/안정성/웹서치). policy_accuracy=권장정책(유형별 전용 도구: 코드/웹검색/Guardrails)의 정답률. llm_guess_accuracy=naive(암산·도구無) 정답률. 오답 시 점수 차감 + 생명 -1"
+    "rewards": {"c1": 400, "c2": 600, "c3": 550, "c4": 800, "c5": 250, "c18": 500, "c30": 1000, "c40": 50},
+    "damage_lives": {"c1": 1, "c2": 1, "c3": 1, "c4": 1, "c5": 1, "c18": 1, "c30": 5, "c40": 0},
+    "_note": "확정 챌린지별 보상/오답 생명데미지. 오답=생명-1(=−250점), c30=−5(=−1250점, 열쇠 c40 필요). 전체 표: agent/challenges.md"
   },
 
   "treasure": {
     "present": true,
-    "bonus_score": 1000
+    "bonus_score": 2000,
+    "_note": "확정: 보물 도달 +2000 (그리고 게임 종료). 미도달 시 보너스·생명보너스 못 받음"
   },
 
   "bonus": {
     "consecutive_solve_bonus": 0,
     "early_finish_bonus_per_step": 0,
-    "_note": "당일: 보너스 탭 확인 후 채움"
+    "token_bonus_max": 1000,
+    "_note": "확정: 토큰 보너스 = 1000 - (총 토큰 / 방문 챌린지). 챌린지당 토큰 절약이 점수"
   }
 }

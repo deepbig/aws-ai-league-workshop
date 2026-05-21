@@ -4,15 +4,23 @@
 > 목적: 안정성(safety) 챌린지를 안전하게 처리 + 유해 출력 차단.
 > ★ **그러나 과도하게 막으면 챌린지가 통째로 차단되어 점수를 잃는다** — 민감도 보정이 핵심.
 
-## 생성 절차 (UI)
+## 생성 절차 (UI) — c1 Violent Violet 정확 설정
 
 1. "Amazon Bedrock Guardrails" 아래 `+` 클릭 → Create Guardrail.
-2. **이름** + **차단 시 반환 메시지**(blocked message) 입력.
-   - blocked message는 짧고 안전하게(예: "I can't help with that request.").
-3. 콘텐츠 필터 카테고리(증오/폭력/성적/모욕/불법행위/프롬프트 공격 등)를 규칙에 맞게 구성.
-4. Next → Create Guardrail.
-5. **Supervisor 에이전트에 연결**(Associate) → Save Changes.
-6. Supervisor 옆에 guardrail이 보이면 성공.
+2. **이름** + **차단 시 반환 메시지(blocked message)** 입력.
+   - ★ **차단 메시지는 정확히**: `the hero cannot assist with that request`
+     (c1은 차단 시 이 문구를 그대로 반환해야 통과/득점.)
+3. 콘텐츠 필터: **불법 활동·폭력·혐오·비행(misconduct)** 차단.
+4. **금지 주제(Denied topics) 추가** — c1이 명시한 항목:
+   - 식용 꽃(edible flowers) 언급
+   - 이식(transplant) 언급
+   - 잡초(weed) 언급
+   (Violent Violet은 꽃 테마의 이중의미 단어를 테스트 → 위 주제를 거부 목록에.)
+5. Next → Create Guardrail.
+6. **Supervisor 에이전트에 연결**(Associate) → Save Changes.
+7. Supervisor 옆에 guardrail이 보이면 성공.
+
+> c1 보상 +400 / 오답 ♥-1. 차단 문구가 정확하고 위 주제를 막되, **정상 질문은 통과**해야 함.
 
 ## ★ 민감도 보정 (가장 중요 — 점수 직결)
 
