@@ -1,43 +1,46 @@
-"""AgentCore Lambda — Pathfinding (예산제약 Orienteering 솔버)
+"""AgentCore Lambda — Pathfinding (보물=종착 Orienteering, mapId 기반, 전략 지원)
 
-SageMaker 코드 에디터에 그대로 붙여넣어 Lambda 함수로 배포.
-sim/planners.py의 검증된 알고리즘(진짜 최적의 99.8~100%, docs/08)을
-무의존성 표준라이브러리만으로 자급 구현. AgentCore가 Tool로 호출.
+핵심 게임 규칙 반영:
+- 보물(treasure) 도달 시 게임 종료 → 보물은 경로의 '종착 노드'. 코인을 최대한
+  모은 뒤 마지막에 보물로 가는 경로를 만든다. (default 'swift'는 최단 보물행이라
+  코인을 거의 못 모음 → 개선 전략 'max_loot'가 핵심)
+- 맵 아이템은 mapId(c1-cN)로 식별. items[].id 사용, route도 mapId로 반환.
+- 장애물(spikes 등)은 통과 시 생명 -1, 회피 가능 → 통과 비용 가산으로 우회.
+- 막힘/벽은 grid=1 → 절대 경유 안 함(강제 통과 시 게임 종료).
 
-Tool 계약 (agent/tools.md `navigate`):
+전략(navigation prompt: "use strategy <name>"):
+- swift     : 코인 무시, 보물로 최단 (게임 빨리 종료 — 비권장)
+- get_coins : 도달 가능한 모든 코인 수집 후 보물
+- max_loot  : 시간 예산 내 코인 가치 합 최대화 후 보물 (★권장, Orienteering)
+
+[중요/실격 방지] 본 Lambda는 외부 모델(LLM/API)을 호출하지 않는 순수 알고리즘이다.
+정답 하드코딩·외부 모델 사용은 실격 사유 → 절대 추가하지 말 것.
+
+Tool 계약:
   event = {
-    "start": [r, c],
-    "grid":  [[0,1,...], ...],         # 0=통로 1=벽
-    "rewards": [
-      {"cell":[r,c], "kind":"coin|challenge|treasure",
-       "value": <int>, "solve_cost": <int>}
+    "start": [r,c] | "start",
+    "grid":  [[0,1,...], ...],            # 0=통로, 1=벽/막힘
+    "items": [
+      {"id":"c1","cell":[r,c],"kind":"coin|challenge|treasure|obstacle",
+       "value":<코인 가치, 코인/챌린지>, "solve_cost":<도착 후 스텝, 챌린지>}
     ],
     "time_budget": <int>,
-    "mode": "fast" | "precise"          # fast=greedy+LS, precise=ILS
+    "strategy": "max_loot" | "get_coins" | "swift",
+    "obstacle_penalty": <int, 기본 4>
   }
-
-  return {
-    "route": [[r,c], ...],              # 시작점 제외, 방문할 보상 셀의 순서
-    "expected_value": <int>,
-    "used_steps": <int>
-  }
+  return { "route": ["c3","c1",...,"<treasure id>"], "expected_value": <int>, "used_steps": <int> }
 """
 from __future__ import annotations
 
 import heapq
 import json
-import math
 import random
 
 INF = float("inf")
 
 
-# ----- Dijkstra 거리 (막힘=벽 통과불가, 장애물=비용 가산으로 우회) -------
-def _dijkstra(grid, src, obstacles, obstacle_penalty):
-    """src에서 모든 통로 셀까지 최소 '유효 비용'.
-    이동 1스텝 = 1, 장애물 셀로 진입 시 obstacle_penalty 가산(회피 가능 → 우회 유도).
-    벽/막힘(grid==1)은 통과 불가.
-    """
+# ----- Dijkstra: 막힘=통과불가, 장애물=비용 가산(우회) -------------------
+def _dijkstra(grid, src, obstacles, penalty):
     H, W = len(grid), len(grid[0])
     src = tuple(src)
     dist = {src: 0}
@@ -49,68 +52,60 @@ def _dijkstra(grid, src, obstacles, obstacle_penalty):
         for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nr, nc = r + dr, c + dc
             if 0 <= nr < H and 0 <= nc < W and grid[nr][nc] == 0:
-                step = 1 + (obstacle_penalty if (nr, nc) in obstacles else 0)
-                nd = d + step
-                if nd < dist.get((nr, nc), INF):
-                    dist[(nr, nc)] = nd
-                    heapq.heappush(pq, (nd, (nr, nc)))
+                step = 1 + (penalty if (nr, nc) in obstacles else 0)
+                if d + step < dist.get((nr, nc), INF):
+                    dist[(nr, nc)] = d + step
+                    heapq.heappush(pq, (d + step, (nr, nc)))
     return dist
 
 
-def _distance_matrix(grid, start, rewards, obstacles, obstacle_penalty):
-    """0=start, 1..N=rewards. {i: {j: 유효비용}}."""
-    anchors = [tuple(start)] + [tuple(r["cell"]) for r in rewards]
-    obs = set(map(tuple, obstacles))
-    dm = {}
-    for i, cell in enumerate(anchors):
-        d = _dijkstra(grid, cell, obs, obstacle_penalty)
-        dm[i] = {j: d[anchors[j]] for j in range(len(anchors)) if anchors[j] in d}
-    return dm, anchors
-
-
-# ----- 비용/가치 유틸 ---------------------------------------------------
-def _route_cost(route, dm, rewards):
+# ----- 비용/가치 (보물 종착 항 포함) ------------------------------------
+def _cost(route, dm, solve, terminal):
+    """start(0) → route → terminal(보물). 도달 불가 시 INF."""
     cur, used = 0, 0
     for nid in route:
         if nid not in dm.get(cur, {}):
             return INF
-        used += dm[cur][nid] + rewards[nid - 1]["solve_cost"]
+        used += dm[cur][nid] + solve[nid]
         cur = nid
+    if terminal is not None:
+        if terminal not in dm.get(cur, {}):
+            return INF
+        used += dm[cur][terminal]
     return used
 
 
-def _route_value(route, rewards):
-    return sum(rewards[n - 1]["value"] for n in route)
+def _value(route, val):
+    return sum(val[n] for n in route)
 
 
-def _feasible_prefix(route, dm, rewards, budget):
-    cur, used, out = 0, 0, []
-    for nid in route:
-        if nid not in dm.get(cur, {}):
+def _prefix(route, dm, solve, val, terminal, budget):
+    """예산 안에 '보물까지 포함'해 방문 가능한 prefix."""
+    out = []
+    for k in range(len(route), -1, -1):
+        if _cost(route[:k], dm, solve, terminal) <= budget:
+            out = route[:k]
             break
-        step = dm[cur][nid] + rewards[nid - 1]["solve_cost"]
-        if used + step > budget:
-            break
-        used += step
-        out.append(nid)
-        cur = nid
     return out
 
 
-# ----- 탐욕(가치/비용비) -----------------------------------------------
-def _greedy_ratio(dm, rewards, budget):
+# ----- Orienteering 솔버 (보물 종착) -----------------------------------
+def _greedy(ids, dm, solve, val, terminal, budget):
     cur, used, route = 0, 0, []
-    rem = set(range(1, len(rewards) + 1))
+    rem = set(ids)
     while True:
         best, best_ratio, best_step = None, -1.0, 0
         for nid in rem:
-            d = dm.get(cur, {}).get(nid, INF)
-            if d is INF:
+            if nid not in dm.get(cur, {}):
                 continue
-            step = d + rewards[nid - 1]["solve_cost"]
-            if used + step > budget:
+            step = dm[cur][nid] + solve[nid]
+            # 이 노드 추가 후에도 보물까지 갈 수 있어야 함
+            if terminal is not None and terminal not in dm.get(nid, {}):
                 continue
-            ratio = rewards[nid - 1]["value"] / max(step, 1)
+            tail = dm[nid][terminal] if terminal is not None else 0
+            if used + step + tail > budget:
+                continue
+            ratio = val[nid] / max(step, 1)
             if ratio > best_ratio:
                 best, best_ratio, best_step = nid, ratio, step
         if best is None:
@@ -122,91 +117,61 @@ def _greedy_ratio(dm, rewards, budget):
     return route
 
 
-# ----- 지역탐색: 2-opt + or-opt + 삽입 ---------------------------------
-def _two_opt(route, dm, rewards, budget):
+def _two_opt(route, dm, solve, val, terminal, budget):
     improved = True
     while improved:
         improved = False
-        base = _route_cost(route, dm, rewards)
+        base = _cost(route, dm, solve, terminal)
         for i in range(len(route) - 1):
             for j in range(i + 1, len(route)):
                 cand = route[:i] + route[i:j + 1][::-1] + route[j + 1:]
-                if _route_cost(cand, dm, rewards) < base - 1e-9:
-                    route, base, improved = cand, _route_cost(cand, dm, rewards), True
+                c = _cost(cand, dm, solve, terminal)
+                if c < base - 1e-9 and c <= budget:
+                    route, base, improved = cand, c, True
     return route
 
 
-def _or_opt(route, dm, rewards, budget):
-    improved = True
-    while improved:
-        improved = False
-        base = _route_cost(route, dm, rewards)
-        for seg in (1, 2, 3):
-            for i in range(len(route) - seg + 1):
-                chunk = route[i:i + seg]
-                rest = route[:i] + route[i + seg:]
-                for pos in range(len(rest) + 1):
-                    if pos == i:
-                        continue
-                    cand = rest[:pos] + chunk + rest[pos:]
-                    nc = _route_cost(cand, dm, rewards)
-                    if nc < base - 1e-9:
-                        route, base, improved = cand, nc, True
-                        break
-                if improved:
-                    break
-            if improved:
-                break
-    return route
-
-
-def _insert_extra(route, dm, rewards, budget):
-    in_route = set(route)
+def _insert(route, ids, dm, solve, val, terminal, budget):
+    inr = set(route)
     changed = True
     while changed:
         changed = False
-        base = _route_cost(route, dm, rewards)
+        base = _cost(route, dm, solve, terminal)
         best_gain, best = -1.0, None
-        for nid in range(1, len(rewards) + 1):
-            if nid in in_route:
+        for nid in ids:
+            if nid in inr:
                 continue
             for pos in range(len(route) + 1):
                 cand = route[:pos] + [nid] + route[pos:]
-                c = _route_cost(cand, dm, rewards)
+                c = _cost(cand, dm, solve, terminal)
                 if c <= budget:
-                    extra = c - base
-                    gain = rewards[nid - 1]["value"] / max(extra, 1)
+                    gain = val[nid] / max(c - base, 1)
                     if gain > best_gain:
                         best_gain, best = gain, (cand, nid)
         if best:
             route, nid = best
-            in_route.add(nid)
+            inr.add(nid)
             changed = True
     return route
 
 
-def _local_search(route, dm, rewards, budget):
+def _local(route, ids, dm, solve, val, terminal, budget):
     prev = -1
     while True:
-        route = _two_opt(route, dm, rewards, budget)
-        route = _or_opt(route, dm, rewards, budget)
-        route = _insert_extra(route, dm, rewards, budget)
-        v = _route_value(_feasible_prefix(route, dm, rewards, budget), rewards)
+        route = _two_opt(route, dm, solve, val, terminal, budget)
+        route = _insert(route, ids, dm, solve, val, terminal, budget)
+        v = _value(_prefix(route, dm, solve, val, terminal, budget), val)
         if v <= prev:
             break
         prev = v
-    return _feasible_prefix(route, dm, rewards, budget)
+    return _prefix(route, dm, solve, val, terminal, budget)
 
 
-def _greedy_ls(dm, rewards, budget):
-    return _local_search(_greedy_ratio(dm, rewards, budget), dm, rewards, budget)
-
-
-# ----- ILS (precise 모드) ----------------------------------------------
-def _ils(dm, rewards, budget, iters=50, seed=0):
+def _ils(ids, dm, solve, val, terminal, budget, iters=60, seed=0):
     rng = random.Random(seed)
-    cur = _greedy_ls(dm, rewards, budget)
-    best, best_v = cur[:], _route_value(cur, rewards)
+    cur = _local(_greedy(ids, dm, solve, val, terminal, budget),
+                 ids, dm, solve, val, terminal, budget)
+    best, best_v = cur[:], _value(cur, val)
     for _ in range(iters):
         r = cur[:]
         if len(r) >= 4 and rng.random() < 0.5:
@@ -216,8 +181,8 @@ def _ils(dm, rewards, budget, iters=50, seed=0):
             for _ in range(rng.randint(1, max(1, len(r) // 3))):
                 if r:
                     r.pop(rng.randrange(len(r)))
-        r = _local_search(r, dm, rewards, budget)
-        v = _route_value(r, rewards)
+        r = _local(r, ids, dm, solve, val, terminal, budget)
+        v = _value(r, val)
         if v >= best_v:
             best, best_v, cur = r[:], v, r
     return best
@@ -225,45 +190,87 @@ def _ils(dm, rewards, budget, iters=50, seed=0):
 
 # ----- Lambda handler --------------------------------------------------
 def lambda_handler(event, context=None):
-    start = event["start"]
     grid = event["grid"]
-    rewards = event.get("rewards", [])
-    obstacles = event.get("obstacles", [])
-    obstacle_penalty = int(event.get("obstacle_penalty", 4))
+    items = event.get("items", [])
     budget = int(event.get("time_budget", 0))
-    mode = event.get("mode", "fast")
+    strategy = event.get("strategy", "max_loot")
+    penalty = int(event.get("obstacle_penalty", 4))
 
-    if not rewards or budget <= 0:
-        return {"route": [], "expected_value": 0, "used_steps": 0}
+    # mapId <-> 내부 인덱스
+    treasure_item = next((it for it in items if it["kind"] == "treasure"), None)
+    obstacle_cells = set(tuple(it["cell"]) for it in items if it["kind"] == "obstacle")
+    reward_items = [it for it in items if it["kind"] in ("coin", "challenge")]
 
-    dm, anchors = _distance_matrix(grid, start, rewards, obstacles, obstacle_penalty)
+    start = event.get("start", "start")
+    start_cell = start if isinstance(start, (list, tuple)) else \
+        next((it["cell"] for it in items if it.get("id") == start), [0, 0])
 
-    if mode == "precise":
-        route_ids = _ils(dm, rewards, budget, iters=60)
-    else:
-        route_ids = _greedy_ls(dm, rewards, budget)
+    anchors = [tuple(start_cell)]                    # 0 = start
+    idx_of_id, id_of_idx = {}, {}
+    for it in reward_items:
+        idx = len(anchors)
+        anchors.append(tuple(it["cell"]))
+        idx_of_id[it["id"]] = idx
+        id_of_idx[idx] = it["id"]
+    terminal = None
+    if treasure_item is not None:
+        terminal = len(anchors)
+        anchors.append(tuple(treasure_item["cell"]))
+        id_of_idx[terminal] = treasure_item["id"]
 
-    route_ids = _feasible_prefix(route_ids, dm, rewards, budget)
+    # 거리행렬 (장애물 회피 가중)
+    dm = {}
+    for i, cell in enumerate(anchors):
+        d = _dijkstra(grid, cell, obstacle_cells, penalty)
+        dm[i] = {j: d[anchors[j]] for j in range(len(anchors)) if anchors[j] in d}
+
+    val = {0: 0}
+    solve = {0: 0}
+    for it in reward_items:
+        idx = idx_of_id[it["id"]]
+        val[idx] = it.get("value", 0)
+        solve[idx] = it.get("solve_cost", 0)
+    if terminal is not None:
+        val[terminal] = treasure_item.get("value", 0)
+        solve[terminal] = treasure_item.get("solve_cost", 0)
+
+    ids = list(idx_of_id.values())
+
+    # 전략
+    if strategy == "swift":
+        route = []                                   # 코인 무시, 보물로 직행
+    elif strategy == "get_coins":
+        coin_ids = [idx_of_id[it["id"]] for it in reward_items if it["kind"] == "coin"]
+        route = _local(coin_ids[:], coin_ids, dm, solve, val, terminal, budget)
+    else:                                            # max_loot (권장)
+        route = _ils(ids, dm, solve, val, terminal, budget, iters=60)
+
+    route = _prefix(route, dm, solve, val, terminal, budget)
+
+    # 보물(종착) 부착
+    route_idx = route + ([terminal] if terminal is not None else [])
     return {
-        "route": [list(anchors[i]) for i in route_ids],
-        "expected_value": _route_value(route_ids, rewards),
-        "used_steps": _route_cost(route_ids, dm, rewards) if route_ids else 0,
+        "route": [id_of_idx[i] for i in route_idx],
+        "expected_value": _value(route, val) + (val.get(terminal, 0) if terminal is not None else 0),
+        "used_steps": _cost(route, dm, solve, terminal) if (route or terminal is not None) else 0,
+        "strategy": strategy,
     }
 
 
-# ----- 로컬 자가검증 (Lambda 외부에서 python pathfinding.py로 실행) -----
+# ----- 로컬 자가검증 ---------------------------------------------------
 if __name__ == "__main__":
     demo = {
         "start": [0, 0],
         "grid": [[0] * 6 for _ in range(6)],
-        "rewards": [
-            {"cell": [1, 3], "kind": "coin",      "value": 100, "solve_cost": 0},
-            {"cell": [4, 1], "kind": "coin",      "value": 80,  "solve_cost": 0},
-            {"cell": [5, 5], "kind": "treasure",  "value": 500, "solve_cost": 0},
-            {"cell": [3, 4], "kind": "challenge", "value": 300, "solve_cost": 2},
+        "items": [
+            {"id": "c1", "cell": [1, 3], "kind": "coin",      "value": 100, "solve_cost": 0},
+            {"id": "c2", "cell": [3, 4], "kind": "challenge", "value": 600, "solve_cost": 2},
+            {"id": "c3", "cell": [4, 1], "kind": "coin",      "value": 80,  "solve_cost": 0},
+            {"id": "c4", "cell": [2, 3], "kind": "obstacle",  "value": 0,   "solve_cost": 0},
+            {"id": "c5", "cell": [5, 5], "kind": "treasure",  "value": 300, "solve_cost": 0},
         ],
-        "obstacles": [[2, 3], [3, 3]],   # 회피 대상(생명 -1)
-        "time_budget": 20,
-        "mode": "precise",
+        "time_budget": 24,
     }
-    print(json.dumps(lambda_handler(demo), ensure_ascii=False, indent=2))
+    for strat in ("swift", "get_coins", "max_loot"):
+        print(strat, json.dumps(lambda_handler(dict(demo, strategy=strat), None),
+                                ensure_ascii=False))

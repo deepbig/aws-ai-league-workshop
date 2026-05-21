@@ -14,6 +14,7 @@
 
 | 관측된 규칙 | score_model 변경 | 정책 자동 반응 |
 |---|---|---|
+| **보물 도달=게임종료** | (전략) | `use strategy max_loot` — 코인 최대 수집 후 마지막에 보물(swift 금지) |
 | 챌린지 배점 ≫ 코인 | `challenge_score.gain↑` | 챌린지를 경로 1순위 |
 | 오답 차감 큼 | `challenge_score.loss↑` | 저신뢰 챌린지 SKIP(기대값 음수 회피) |
 | 코인 가치 차등 | `coin_value.type=varied` | navigate가 가치가중 경로 산출 |
@@ -28,6 +29,9 @@
 | 행동 인터페이스가 자연어 | (Guardrails) | Supervisor 출력 스키마 재정의 |
 
 → 어느 경우든 **프롬프트는 그대로**, Memory `score_model`/Guardrails 파라미터만 교체.
+
+> ★ 실격 금지(절대): 도구 내 외부 모델/API 호출, 프롬프트 정답 하드코딩, 범위 외 작업.
+> 챌린지는 런타임 해결(코드 실행/웹 검색/추론)만으로 푼다.
 
 ## 반복 개선 (사이클당 1변수)
 

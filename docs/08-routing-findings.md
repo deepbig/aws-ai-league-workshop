@@ -5,7 +5,12 @@
 >
 > 여기서 얻는 결론은 단 하나: **"경로는 LLM이 추측하지 말고 결정론적 navigate Tool에 위임하라"**
 > (LLM 경로추정은 부정확, 검증된 알고리즘은 진짜 최적의 99.8~100%).
-> 이 알고리즘은 [agent/tools.md](../agent/tools.md)의 `navigate` Lambda 구현으로 편입된다.
+> 이 알고리즘은 [agent/lambdas/pathfinding.py](../agent/lambdas/pathfinding.py)의 `Pathfinding` Lambda 구현으로 편입된다.
+>
+> 모델링 차이(정직): 본 sim은 보물을 일반 고가치 노드로 모델링한다. 그러나 **실제 게임에선
+> 보물 도달 = 게임 종료**이므로, 배포 Lambda는 보물을 **종착 노드**로 처리하고 코인을
+> 최대한 모은 뒤 마지막에 보물로 가는 `max_loot` 전략을 쓴다(자가검증: swift 300 <
+> get_coins 480 < max_loot 1080). sim의 상대 우열 결론(강한 솔버 우월)은 그대로 유효.
 
 ---
 

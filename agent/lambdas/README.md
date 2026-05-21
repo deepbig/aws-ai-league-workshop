@@ -1,43 +1,59 @@
 # agent/lambdas/ — SageMaker 코드 에디터 붙여넣기용
 
-워크샵 UI의 "도구 > AWS Lambda 함수" 슬롯에 등록할 Python 코드.
-모두 **표준 라이브러리만** 사용해 zero-dependency.
+워크샵 "도구 > AWS Lambda 함수" 슬롯에 등록할 Python 코드. **표준 라이브러리만** 사용.
 
-| 파일 | UI 등록 이름(권장) | 용도 |
+> **실격 주의**: Lambda 도구 안에서 **외부 모델/LLM/API 호출 금지**, **정답 하드코딩 금지**.
+> 본 코드는 순수 알고리즘이라 안전. 절대 외부 호출/하드코딩을 추가하지 말 것.
+
+| 파일 | UI 이름(권장) | 용도 |
 |---|---|---|
-| [pathfinding.py](pathfinding.py) | `Pathfinding` | 예산제약 Orienteering 경로 산출(진짜 최적의 99.8~100%). Navigator 서브에이전트가 호출 |
+| [pathfinding.py](pathfinding.py) | `Pathfinding` | 보물=종착 Orienteering 경로(전략 swift/get_coins/**max_loot**) |
 
-> 워크샵에서 `Pathfinding` Lambda가 기본 제공될 수 있음(스크린샷 참조). 그 경우 코드를
-> 본 파일 내용으로 **덮어쓰기** 권장 — 본 구현이 우리 시뮬레이션으로 검증된 결과.
+## pathfinding.py — 무엇을 개선했나
 
-## 배포 방법 (Lambda 슬롯에 등록)
+기본 제공 Pathfinding은 `swift`(보물 직행)·`get_coins`만 지원. 그러나 **보물 도달 =
+게임 종료**라 swift는 코인을 거의 못 모은다. 그래서 **`max_loot` 전략**을 추가:
+시간 예산 내 코인 가치 합을 최대화하고 **마지막에 보물로 종료**(검증된 Orienteering,
+docs/08). 자가검증 예: swift=300 < get_coins=480 < **max_loot=1080**.
 
-1. UI의 "AWS Lambda 함수" 섹션에서 `+` → SageMaker 코드 에디터가 열림.
-2. [`pathfinding.py`](pathfinding.py) 내용을 **그대로 붙여넣기**.
-3. Handler: `lambda_handler` (파일 하단 함수).
-4. 저장 → 워크샵 환경이 Lambda 등록 처리.
+### Tool 계약 (mapId 기반)
 
-## Tool 계약 (재참조)
+```json
+event = {
+  "start": [r,c],
+  "grid":  [[0,1,...], ...],            // 0=통로 1=벽/막힘
+  "items": [
+    {"id":"c1","cell":[r,c],"kind":"coin|challenge|treasure|obstacle",
+     "value":<코인>,"solve_cost":<스텝>}
+  ],
+  "time_budget": <int>,
+  "strategy": "max_loot | get_coins | swift",
+  "obstacle_penalty": 4
+}
+return { "route": ["c3","c1",...,"<treasure id>"], "expected_value": <int>,
+         "used_steps": <int>, "strategy": "max_loot" }
+```
 
-`event` JSON 형식은 [agent/tools.md](../tools.md)의 `navigate` 입력 스키마와 동일.
-이 스키마를 사용하도록 Navigator 서브에이전트의 시스템 프롬프트
-([../prompts/navigator.md](../prompts/navigator.md))가 작성되어 있음.
+- **route는 mapId(c1..cN) 순서**, 항상 보물 id로 끝남(보물=종착).
+- 막힘/벽 = grid 1 → 미경유. 장애물(spikes) = `obstacle_penalty` 가산으로 우회.
+- **Navigation prompt**(Submit & Play 직전): `use strategy max_loot`.
+
+## 배포
+
+1. UI "AWS Lambda 함수" `+` → SageMaker 에디터에 [pathfinding.py](pathfinding.py) 붙여넣기.
+2. Handler: `lambda_handler`. 저장 → Pathfinding 서브에이전트에 연결.
+
+## 코드 실행 Lambda (Code 챌린지용)
+
+c2 같은 코드 챌린지는 **Amazon Bedrock Code Interpreter 기반 Lambda**가 필요
+("build a lambda tool that can handle writing and executing code"). 이 도구는
+Bedrock Code Interpreter API로 코드를 실행하고 결과를 반환하도록 구성한다
+(외부 LLM 호출 아님 — 실격 아님). Code_Specialist 서브에이전트에 연결.
 
 ## 로컬 검증
 
 ```bash
-python3 agent/lambdas/pathfinding.py
-# → 데모 입력에 대해 route/expected_value/used_steps 반환 확인
+python3 agent/lambdas/pathfinding.py    # swift/get_coins/max_loot 비교 출력
+python3 sim/bench.py                     # 진짜 최적해(Held-Karp) 대비 %opt
+python3 sim/robustness.py                # 규칙 레짐 6종 강건성
 ```
-
-`sim/planners.py`(검증된 동일 알고리즘)로 대규모 회귀 검증 가능:
-```bash
-python3 sim/bench.py          # 진짜 최적해(Held-Karp) 대비 %opt
-python3 sim/robustness.py     # 규칙 레짐 6종 강건성
-```
-
-## 코드 풀이용(Code Specialist 서브에이전트)
-
-`CodeExecution`은 AgentCore 내장 도구일 가능성이 큼(스크린샷 Combat Log의
-"Using tool: CodeExecution"). 별도 Lambda 불필요할 수 있으나, 만약 커스텀이
-필요하면 본 디렉토리에 `code_exec.py`를 추가하는 형태로 확장.
