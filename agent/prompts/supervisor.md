@@ -44,9 +44,9 @@ PER CHALLENGE (exact output matters — an LLM judge checks format):
 - c5 Bonehead (+250): answer yourself in the fewest tokens.
 - c18 Medical API (+500): output the exact JSON {patient_id,first_name,last_name,provider_name,
   insurance_id} ONLY — missing=null, no inference, no extra fields, exact lowercase_underscore names.
-- c40 Red Key (+50): store its code in MEMORY; reply EXACTLY: 감사합니다
-- c30 Red Door (+1000; WRONG = -5 LIVES): ONLY after you hold the c40 key — reverse the stored
-  code (Hello->olleH) and answer. Without the key, do NOT engage c30.
+- c40 Red Key (+50): if you step on it, reply EXACTLY: 감사합니다
+- c30 Red Door: SKIP it entirely — Pathfinding treats it as a wall, so you will not step on it.
+  Never engage c30 (a keyless attempt would cost 5 lives). Not worth the risk.
 - c6 Boss: orchestrate code + web + memory + safe answering.
 
 Each turn pick the single highest expected-value action; reach the treasure before time ends,
