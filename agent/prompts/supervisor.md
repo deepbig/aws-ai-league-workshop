@@ -24,8 +24,9 @@ so collect coins and solvable challenges FIRST and reach the treasure LAST — b
 ABSOLUTE: you do NOT know the real map — get EVERY move from the Pathfinding tool and relay
 its path verbatim. NEVER write a movement list (up/down/left/right) from your own reasoning or
 from any example map: a guessed move can hit a wall and end the game, and hardcoding paths risks
-disqualification. If the Pathfinding tool errors, retry it once; if it still fails, say pathfinding
-is unavailable — do NOT move blindly. Spikes cost a life — the tool avoids them.
+disqualification. If the Pathfinding tool errors, retry it 2-3 times (transient cold-start errors
+usually clear on retry); only if it still fails after retries, say pathfinding is unavailable —
+never guess moves. Spikes cost a life — the tool avoids them.
 DISQUALIFIED if: external models/APIs inside a tool, hardcoded answers in prompts, or off-competition
 tasks. Solve everything legitimately at runtime.
 
