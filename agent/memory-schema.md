@@ -17,16 +17,27 @@
 
 ```json
 {
-  "coin_value":   {"type": "uniform|varied", "rule": "<관측 규칙>"},
-  "challenge_score": <int>,
-  "wrong_penalty":   {"score": <int>, "lives": <int>},
+  "time_limit_sec":  300,                       // 제한시간 5분(확정)
+  "coin_value":      {"type": "uniform|varied", "rule": "<관측 규칙>"},
+  "treasure_value":  <int>,
+  "challenge_score": {"gain": <int>, "loss": <int>},   // 정답 획득 / 오답 차감
+  "challenge_types": ["math", "web", "knowledge", "safety"],  // 4종
+  "type_confidence": {"math": 1.0, "web": <0~1>, "knowledge": <0~1>, "safety": <0~1>},
+  "life_value":      <int>,                      // 남은 생명 1개당 점수(확정: 생명=점수)
+  "obstacle_rule":   {"life_cost": 1, "avoidable": true},  // 장애물(회피 가능)
+  "blocked_rule":    "강제 통과 시 게임 종료",     // 막힘 구간(치명적)
+  "token_bonus":     {"exists": true, "rule": "<효율 보상 규칙>"},  // 토큰 보너스
   "bonus_triggers":  [{"when": "<조건>", "reward": <int>}],
-  "time_rule":       {"bonus_per_step": <num>, "penalty": "<유무>"},
-  "life_rule":       "<생명 소모 트리거>",
   "answer_format":   "<제출 포맷>",
+  "judge":           "LLM-as-judge(별도 환경)",   // 응답 품질 평가
   "unknowns":        ["<미파악 항목>"]
 }
 ```
+
+- `type_confidence`가 낮은 챌린지(예: 불확실 웹/상식)는 `challenge_score.loss`가 크면
+  Supervisor가 SKIP(기대값 음수 회피).
+- `life_value`·`obstacle_rule`로 회피 정책이 점수와 직접 연결.
+- `token_bonus` 존재 시 출력 축약·Memory 캐시 재사용으로 보너스 확보.
 
 - Supervisor 정책은 이 값을 읽어 우선순위를 **재계산**(프롬프트 불변, 값만 변경).
 - `unknowns`가 비워질수록 행동 최적성↑ → Recon이 초반 최우선.

@@ -5,9 +5,11 @@
 | 파일 | 용도 |
 |---|---|
 | **[orchestration.md](orchestration.md)** | **★ UI 슬롯 배치도** (당일 브라우저에서 무엇을 어디에 넣을지) |
-| [prompts/supervisor.md](prompts/supervisor.md) | Supervisor 시스템 프롬프트 (매 턴 단일 행동, 정책=score_model 함수) |
-| [prompts/navigator.md](prompts/navigator.md) | Pathfinder — `Pathfinding` Lambda에 경로 위임 |
-| [prompts/challenge-solver.md](prompts/challenge-solver.md) | Code Specialist — CodeExecution 도구로 100% 정답 |
+| [prompts/supervisor.md](prompts/supervisor.md) | Supervisor (매 턴 단일 행동, 정책=score_model 함수, 챌린지 유형별 라우팅) |
+| [prompts/navigator.md](prompts/navigator.md) | Pathfinder — `Pathfinding` Lambda(막힘 회피·장애물 우회) |
+| [prompts/challenge-solver.md](prompts/challenge-solver.md) | Code Specialist — 수학/알고리즘 (CodeExecution) |
+| [prompts/web-researcher.md](prompts/web-researcher.md) | Web Researcher — 웹서치 챌린지 (웹 검색 도구) |
+| [prompts/knowledge-safety.md](prompts/knowledge-safety.md) | Knowledge & Safety — 일반상식/안정성 챌린지 |
 | [prompts/memory-recon.md](prompts/memory-recon.md) | Memory Curator — Recon(규칙 구조화) + world model |
 | [lambdas/pathfinding.py](lambdas/pathfinding.py) | **★ SageMaker 에디터에 그대로 붙여넣을 Lambda 코드** |
 | [tools.md](tools.md) | `navigate` / `solve_challenge` / `memory_io` Tool 입출력 계약 |

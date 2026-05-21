@@ -10,15 +10,19 @@
 게임 시작 직후, 그리고 규칙 변동 신호가 보일 때:
 1. 인게임 정보를 읽는다: "목표 / 극대화하는 방법 / 추가 규칙 / 챌린지 탭 /
    보너스 탭" + 워크숍 스튜디오 문서.
-2. 다음 스키마로 score_model 을 채워 Memory에 저장한다:
+2. score_model 을 채워 Memory에 저장한다 (전체 스키마: agent/memory-schema.md):
    {
-     coin_value: 균일?차등? 범위/규칙,
-     challenge_score: 격파 점수,
-     wrong_penalty: 점수/생명 손실,
-     bonus_triggers: [조건→보상] (연속정답·전수집·특정타일·시간 등),
-     time_rule: 시간 보너스/페널티,
-     life_rule: 생명 소모 트리거,
-     answer_format: 답안 제출 포맷,
+     time_limit_sec: 300(5분),
+     coin_value / treasure_value,
+     challenge_score: {gain, loss},          # 정답 획득 / 오답 차감
+     challenge_types: [math, web, knowledge, safety],  # 4종
+     type_confidence: 유형별 정답 신뢰도,
+     life_value: 남은 생명 1개당 점수,        # 생명=점수
+     obstacle_rule: {life_cost, avoidable},  # 장애물 회피 가능
+     blocked_rule: 막힘 강제통과 시 게임종료,
+     token_bonus: 효율 보상 규칙,
+     bonus_triggers: [조건→보상],
+     answer_format, judge(LLM-as-judge),
      unknowns: [아직 모르는 항목]
    }
 3. unknowns가 있으면 초반 탐색 행동으로 관측해 채우도록 Supervisor에 신호.

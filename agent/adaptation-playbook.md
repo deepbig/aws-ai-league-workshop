@@ -14,12 +14,16 @@
 
 | 관측된 규칙 | score_model 변경 | 정책 자동 반응 |
 |---|---|---|
-| 챌린지 배점 ≫ 코인 | `challenge_score↑` | 챌린지를 경로 1순위, 전투 적극 |
+| 챌린지 배점 ≫ 코인 | `challenge_score.gain↑` | 챌린지를 경로 1순위 |
+| 오답 차감 큼 | `challenge_score.loss↑` | 저신뢰 챌린지 SKIP(기대값 음수 회피) |
 | 코인 가치 차등 | `coin_value.type=varied` | navigate가 가치가중 경로 산출 |
-| 오답 페널티 큼 | `wrong_penalty↑` | 미검증 답안 제출 보류(2-방법 검산만) |
+| **남은 생명 점수 큼** | `life_value↑` | 장애물·위험 전투 회피 가중↑(생명 보존=득점) |
+| **장애물 빈번** | `obstacle_rule` | Pathfinder가 obstacles 우회(비용 가산) |
+| **막힘 구간 존재** | `blocked_rule` | grid=벽 표기 → 경로 절대 미경유 + Guardrails 차단 |
+| **토큰 보너스 큼** | `token_bonus↑` | 출력 더 축약, 호출 최소화, Memory 캐시 적극 |
+| **웹서치 챌린지 비중↑** | `type_confidence.web` | Web Researcher 검색 횟수/교차확인 강화 |
+| **안정성 챌린지 비중↑** | `type_confidence.safety` | Guardrails + Knowledge&Safety 균형(과도거절 방지) |
 | 연속정답/전수집 보너스 | `bonus_triggers+=` | 트리거를 navigate 목표에 1급 삽입 |
-| 시간 보너스 존재 | `time_rule.bonus_per_step` | 한계가치<보너스 시 조기 END |
-| 생명 소모 트리거 변경 | `life_rule` | 위험 회피 게이트 갱신 |
 | 답안 포맷 규정 | `answer_format` | Guardrails 출력 스키마 갱신 |
 | 행동 인터페이스가 자연어 | (Guardrails) | Supervisor 출력 스키마 재정의 |
 
@@ -29,11 +33,14 @@
 
 ```
 플레이 → run_stats 로그 → 실패유형 분류
-  경로비효율  → navigate mode=precise / score_model.value 규칙 점검
-  챌린지오답  → solver 2-방법 검산 강제 / answer_format 확인
-  시간초과    → 조기 END 임계 / 저가치 원거리 포기
-  생명손실    → life_rule 갱신 / 위험 회피 게이트
-  규칙오해    → Recon 재실행, score_model.unknowns 해소
+  게임강제종료 → ★막힘 셀 이동 발생: grid 벽 표기·Guardrails 차단 즉시 점검(최우선)
+  경로비효율   → navigate mode=precise / value 규칙·obstacles 입력 점검
+  챌린지오답   → 유형별 도구 라우팅 확인(math→코드, web→검색) / 2-방법 검산
+  챌린지감점   → 저신뢰(type_confidence 낮음) 챌린지 SKIP 임계 상향
+  시간초과     → 조기 END 임계 / 저가치 원거리 포기 (5분 예산)
+  생명손실     → 장애물 회피 가중↑(life_value 반영) / 위험 전투 회피
+  토큰과다     → 출력 축약 / 중복 호출 제거 / Memory 캐시 (토큰 보너스)
+  규칙오해     → Recon 재실행, score_model.unknowns 해소
 → 가장 큰 손실원 1개만 수정 → 재플레이 → 귀속 확인
 ```
 - AI Assistant 입력 세트: (로그 + 본 플레이북 + 현재 score_model + sim 결과).

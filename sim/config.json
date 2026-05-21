@@ -11,8 +11,10 @@
   "budget": {
     "time_steps": 60,
     "lives": 3,
+    "life_value": 300,
     "move_cost_steps": 1,
-    "solve_cost_steps": 2
+    "solve_cost_steps": 2,
+    "_note": "time_steps=제한시간 5분의 스텝 환산(당일 보정). life_value=남은 생명 1개당 점수(생명=점수, 확정)"
   },
 
   "coins": {
@@ -29,7 +31,9 @@
     "wrong_penalty_score": 200,
     "wrong_penalty_lives": 1,
     "llm_guess_accuracy": 0.55,
-    "_note": "solve_cost_steps = 챌린지 도착 후 풀이 소모 스텝. llm_guess_accuracy = 코드 없이 암산 시 정답률(추정), 코드풀이는 1.0"
+    "types": ["math", "web", "knowledge", "safety"],
+    "policy_accuracy": 1.0,
+    "_note": "4종 챌린지(상식/수학·알고리즘/안정성/웹서치). policy_accuracy=권장정책(유형별 전용 도구: 코드/웹검색/Guardrails)의 정답률. llm_guess_accuracy=naive(암산·도구無) 정답률. 오답 시 점수 차감 + 생명 -1"
   },
 
   "treasure": {

@@ -24,36 +24,46 @@ Tool 계약 (agent/tools.md `navigate`):
 """
 from __future__ import annotations
 
+import heapq
 import json
 import math
 import random
-from collections import deque
 
 INF = float("inf")
 
 
-# ----- BFS 거리행렬 -----------------------------------------------------
-def _bfs(grid, src):
+# ----- Dijkstra 거리 (막힘=벽 통과불가, 장애물=비용 가산으로 우회) -------
+def _dijkstra(grid, src, obstacles, obstacle_penalty):
+    """src에서 모든 통로 셀까지 최소 '유효 비용'.
+    이동 1스텝 = 1, 장애물 셀로 진입 시 obstacle_penalty 가산(회피 가능 → 우회 유도).
+    벽/막힘(grid==1)은 통과 불가.
+    """
     H, W = len(grid), len(grid[0])
-    dist = {tuple(src): 0}
-    q = deque([tuple(src)])
-    while q:
-        r, c = q.popleft()
+    src = tuple(src)
+    dist = {src: 0}
+    pq = [(0, src)]
+    while pq:
+        d, (r, c) = heapq.heappop(pq)
+        if d > dist.get((r, c), INF):
+            continue
         for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nr, nc = r + dr, c + dc
-            if 0 <= nr < H and 0 <= nc < W and grid[nr][nc] == 0 \
-                    and (nr, nc) not in dist:
-                dist[(nr, nc)] = dist[(r, c)] + 1
-                q.append((nr, nc))
+            if 0 <= nr < H and 0 <= nc < W and grid[nr][nc] == 0:
+                step = 1 + (obstacle_penalty if (nr, nc) in obstacles else 0)
+                nd = d + step
+                if nd < dist.get((nr, nc), INF):
+                    dist[(nr, nc)] = nd
+                    heapq.heappush(pq, (nd, (nr, nc)))
     return dist
 
 
-def _distance_matrix(grid, start, rewards):
-    """0=start, 1..N=rewards. {i: {j: steps}}."""
+def _distance_matrix(grid, start, rewards, obstacles, obstacle_penalty):
+    """0=start, 1..N=rewards. {i: {j: 유효비용}}."""
     anchors = [tuple(start)] + [tuple(r["cell"]) for r in rewards]
+    obs = set(map(tuple, obstacles))
     dm = {}
     for i, cell in enumerate(anchors):
-        d = _bfs(grid, cell)
+        d = _dijkstra(grid, cell, obs, obstacle_penalty)
         dm[i] = {j: d[anchors[j]] for j in range(len(anchors)) if anchors[j] in d}
     return dm, anchors
 
@@ -218,13 +228,15 @@ def lambda_handler(event, context=None):
     start = event["start"]
     grid = event["grid"]
     rewards = event.get("rewards", [])
+    obstacles = event.get("obstacles", [])
+    obstacle_penalty = int(event.get("obstacle_penalty", 4))
     budget = int(event.get("time_budget", 0))
     mode = event.get("mode", "fast")
 
     if not rewards or budget <= 0:
         return {"route": [], "expected_value": 0, "used_steps": 0}
 
-    dm, anchors = _distance_matrix(grid, start, rewards)
+    dm, anchors = _distance_matrix(grid, start, rewards, obstacles, obstacle_penalty)
 
     if mode == "precise":
         route_ids = _ils(dm, rewards, budget, iters=60)
@@ -250,6 +262,7 @@ if __name__ == "__main__":
             {"cell": [5, 5], "kind": "treasure",  "value": 500, "solve_cost": 0},
             {"cell": [3, 4], "kind": "challenge", "value": 300, "solve_cost": 2},
         ],
+        "obstacles": [[2, 3], [3, 3]],   # 회피 대상(생명 -1)
         "time_budget": 20,
         "mode": "precise",
     }

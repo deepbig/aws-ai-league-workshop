@@ -23,7 +23,8 @@ python3 sim/bench.py        # Navigator Tool 알고리즘 벤치 (SMALL/MID/FULL
 ## 핵심 결과
 
 - **강건성**: 6개 규칙 레짐(챌린지중심·페널티중심·코인차등·시간촉박 등) 전부에서
-  권장 정책(강한 navigate + 챌린지 코드풀이) = **진짜 최적의 100%**, naive 32~72%.
+  권장 정책(강한 navigate + 도구 챌린지풀이 + 생명 보존) = **진짜 최적의 100%**,
+  naive 9~21%(페널티중심은 음수). 생명=점수·오답 차감 반영 시 격차 더 큼.
   → 프롬프트/구조 불변, `config.json`(score_model) 값만 교체로 변수 상황 적응.
 - **Tool 근거**: 경로는 LLM 추정 대신 검증 알고리즘(`greedy+LS` ~99.8%·15ms /
   `plan_ils` 99.9%+)을 navigate Lambda로 → [docs/08](../docs/08-routing-findings.md).

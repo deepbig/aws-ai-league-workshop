@@ -13,15 +13,19 @@ LLM이 직접 하면 부정확한 작업을 결정론적 Lambda Tool로 위임. 
 ```json
 {
   "start": [r, c],
-  "grid":  [[0,1,...], ...],          // 0=통로 1=벽 (보이는 범위)
+  "grid":  [[0,1,...], ...],          // 0=통로 1=벽/막힘(통과불가). 막힘은 반드시 1로
   "rewards": [
     {"cell":[r,c], "kind":"coin|challenge|treasure",
      "value": <score_model로 계산된 가치>, "solve_cost": <스텝>}
   ],
+  "obstacles": [[r,c], ...],          // 회피 대상(생명 -1). 경로 비용에 가산되어 우회됨
   "time_budget": <남은 스텝>,
   "mode": "fast | precise"            // fast=greedy+LS(~15ms), precise=ILS
 }
 ```
+
+> 막힘 셀은 grid=1로 표기 → 경로에 절대 미포함(강제 통과 시 게임 종료 방지).
+> 장애물은 obstacles로 전달 → 통과 비용 가산으로 우회(남은 생명=점수).
 
 **Output**
 ```json
@@ -45,7 +49,17 @@ LLM이 직접 하면 부정확한 작업을 결정론적 Lambda Tool로 위임. 
 
 ---
 
-## 3. `memory_io` — 상태/규칙 저장·조회 (AgentCore Memory)
+## 3. `web_search` — 웹 검색 챌린지 (Web Researcher 전용)
+
+**Input**  `{ "query": "<검색어>", "max_results": 3 }`
+**Output** `{ "results": [{"title":"...","snippet":"...","url":"..."}], "answer": "<추출 사실>" }`
+
+**규약**: 시점 민감/사실 확인 챌린지는 기억 대신 검색. 1~2회 교차 확인 후 채택.
+AgentCore 내장 Browser/WebSearch 도구일 가능성(당일 확인) — 별도 Lambda 불필요할 수 있음.
+
+---
+
+## 4. `memory_io` — 상태/규칙 저장·조회 (AgentCore Memory)
 
 **Input**  `{ "op": "get|put", "key": "<키>", "value": <put 시> }`
 **Output** `{ "key": "...", "value": <구조화 값> }`

@@ -19,23 +19,28 @@
 
 ## 2. 역할 분해 (안내자료 아키텍처 매핑)
 
+서브에이전트 최대 5개(UI 확정). 챌린지 4종(상식/수학·알고리즘/안정성/웹서치)에 맞춰 전부 활용:
+
 ```
 AgentCore Runtime
-├─ Supervisor Agent ........ 매 턴 단일 행동 결정 (정책 = 규칙 파라미터 함수)
-│   ├─ Navigator Sub-Agent .. navigate Tool(Lambda, 결정론적 Orienteering) 호출
-│   ├─ Challenge Solver ..... solve_challenge Tool(Code Interpreter) 호출
-│   └─ Memory/Recon ......... 규칙·맵·진행상태를 AgentCore Memory에 구조화
-├─ AgentCore Gateway ....... Sub-Agent ↔ Lambda Tool 연결
+├─ Supervisor Agent ........ 매 턴 단일 행동 결정 (정책 = score_model 함수)
+│   ├─ Pathfinder .......... navigate Lambda(결정론적 Orienteering, 막힘 회피)
+│   ├─ Code Specialist ..... CodeExecution — 수학/알고리즘 챌린지
+│   ├─ Web Researcher ...... 웹 검색 도구 — 웹서치 챌린지
+│   ├─ Knowledge & Safety .. LLM(+Guardrails) — 일반상식/안정성 챌린지
+│   └─ Memory Curator ...... Recon(규칙 구조화) + world model
+├─ AgentCore Gateway ....... Sub-Agent ↔ Tool 연결
 ├─ AgentCore Memory ........ world model + 발견한 채점규칙(score_model)
-└─ Bedrock Guardrails ...... 입출력 스키마/규칙준수 강제
+└─ Bedrock Guardrails ...... 막힘이동 차단(게임오버 방지) + 안정성 챌린지 득점
 ```
 
-각 구성요소의 실제 프롬프트·계약은 `agent/` 참조:
-- [agent/prompts/supervisor.md](../agent/prompts/supervisor.md)
-- [agent/prompts/navigator.md](../agent/prompts/navigator.md)
-- [agent/prompts/challenge-solver.md](../agent/prompts/challenge-solver.md)
-- [agent/prompts/memory-recon.md](../agent/prompts/memory-recon.md)
-- [agent/tools.md](../agent/tools.md) · [agent/guardrails.md](../agent/guardrails.md) · [agent/memory-schema.md](../agent/memory-schema.md)
+확정 규칙 반영: **남은 생명=점수**(장애물 회피), **막힘 강제통과=게임종료**(경로 유효성 최우선),
+**토큰 보너스**(출력 축약·캐시), **챌린지 점수 획득/차감**(저신뢰 SKIP), **LLM-as-judge 채점**(응답 품질).
+
+각 구성요소의 실제 프롬프트·계약·슬롯배치는 `agent/` 참조:
+- 슬롯 배치도: [agent/orchestration.md](../agent/orchestration.md)
+- 프롬프트: [supervisor](../agent/prompts/supervisor.md) · [navigator(Pathfinder)](../agent/prompts/navigator.md) · [code-specialist](../agent/prompts/challenge-solver.md) · [web-researcher](../agent/prompts/web-researcher.md) · [knowledge-safety](../agent/prompts/knowledge-safety.md) · [memory-recon](../agent/prompts/memory-recon.md)
+- [tools.md](../agent/tools.md) · [guardrails.md](../agent/guardrails.md) · [memory-schema.md](../agent/memory-schema.md) · [lambdas/](../agent/lambdas/)
 
 ## 3. 변수 상황 대응 = 이 워크샵의 핵심 난이도
 

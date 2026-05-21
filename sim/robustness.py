@@ -47,26 +47,44 @@ def apply(cfg, patch):
     return c
 
 
+def _life_bonus(cfg, lives_left):
+    return max(0, lives_left) * cfg["budget"].get("life_value", 0)
+
+
 def score_naive(g, cfg, seed):
-    """암산: 챌린지 정답률 = llm_guess_accuracy, 경로 = 최근접."""
+    """naive: 도구 없이 암산(정답률 낮음) + 최근접 경로 + 장애물에 생명 손실."""
     import random
     rng = random.Random(seed)
     bg = cfg["budget"]["time_steps"]
     route = plan_nearest(g.dist, g.nodes, bg)
     acc = cfg["challenges"]["llm_guess_accuracy"]
     pen = cfg["challenges"]["wrong_penalty_score"]
-    s, cur, used = 0, 0, 0
+    lives = cfg["budget"]["lives"]
+    s, cur, used, visited = 0, 0, 0, 0
     for nid in route:
         n = g.nodes[nid - 1]
         used += g.dist[cur][nid] + n.solve_cost
         if used > bg:
             break
         cur = nid
+        visited += 1
         if n.kind == "challenge":
-            s += n.value if rng.random() < acc else -pen
-        else:
-            s += n.value
-    return s
+            if rng.random() < acc:
+                s += n.value
+            else:
+                s -= pen
+                lives -= cfg["challenges"]["wrong_penalty_lives"]   # 오답 → 생명 -1
+                if lives <= 0:
+                    break
+    # 장애물 회피 안 함 → 방문 중 일부에서 생명 손실(추정)
+    lives -= round(visited * 0.10)
+    return s + _life_bonus(cfg, lives)
+
+
+def score_policy_final(g, cfg, route_value):
+    """권장 정책: 코드/도구로 챌린지 정답률≈policy_accuracy, 장애물 회피 → 생명 보존."""
+    # 라우팅 점수(route_value)는 이미 노드 가치 합. 정책은 생명 전부 보존 가정.
+    return route_value + _life_bonus(cfg, cfg["budget"]["lives"])
 
 
 def main():
@@ -81,9 +99,10 @@ def main():
         for s in seeds:
             g = Game(cfg=cfg, seed=s)
             nv.append(score_naive(g, cfg, s))
-            pol.append(g.evaluate(plan_ils(g.dist, g.nodes, bg, iters=120, seed=s), bg)[0])
+            pv = g.evaluate(plan_ils(g.dist, g.nodes, bg, iters=120, seed=s), bg)[0]
+            pol.append(score_policy_final(g, cfg, pv))
             r = plan_exact(g.dist, g.nodes, bg, node_cap=20)
-            ex.append(g.evaluate(r, bg)[0] if r else None)
+            ex.append(score_policy_final(g, cfg, g.evaluate(r, bg)[0]) if r else None)
         v = [i for i, x in enumerate(ex) if x is not None]
         em = statistics.mean(ex[i] for i in v)
         pm = statistics.mean(pol[i] for i in v)
