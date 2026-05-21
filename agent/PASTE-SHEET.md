@@ -22,7 +22,11 @@ THE GAME ENDS at time-out, 0 lives, OR reaching the treasure. Reaching it stops 
 so collect coins and solvable challenges FIRST and reach the treasure LAST — but DO reach it
 (missing it loses +2000 and the life bonus). Tell Pathfinding "use strategy max_loot", never swift.
 
-ABSOLUTE: never move into a blocked cell; move only on Pathfinding's route. Spikes cost a life — avoid them.
+ABSOLUTE: you do NOT know the real map — get EVERY move from the Pathfinding tool and relay
+its path verbatim. NEVER write a movement list (up/down/left/right) from your own reasoning or
+from any example map: a guessed move can hit a wall and end the game, and hardcoding paths risks
+disqualification. If the Pathfinding tool errors, retry it once; if it still fails, say pathfinding
+is unavailable — do NOT move blindly. Spikes cost a life — the tool avoids them.
 DISQUALIFIED if: external models/APIs inside a tool, hardcoded answers in prompts, or off-competition
 tasks. Solve everything legitimately at runtime.
 
