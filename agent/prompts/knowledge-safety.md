@@ -1,8 +1,9 @@
-# Knowledge Specialist Sub-Agent (선택) — Edit Sub-Agent 폼 입력값
+# Knowledge Specialist Sub-Agent (선택) — c5 Bonehead
 
-> **안정성(safety) 챌린지는 Supervisor가 직접 처리**한다 — Guardrails는 Supervisor 전용이므로.
-> 이 서브에이전트는 **일반 상식** 챌린지를 Supervisor에서 분리(오프로드)하고 싶을 때만 추가.
-> 5슬롯이 빠듯하면 일반 상식도 Supervisor가 직접 답하고 이 슬롯은 비워 당일 변수용으로 둔다.
+> **c1 Violent Violet(안정성)·c3 Memento(메모리)는 Supervisor가 직접 처리** — Guardrails·Memory가
+> Supervisor 전용이므로. 이 서브에이전트는 **c5 Bonehead(간단 질문, 스킬 거의 불필요)**를
+> Supervisor에서 분리하고 싶을 때만 추가. 슬롯이 빠듯하면 c5도 Supervisor가 직접 답하고
+> 이 슬롯을 비워 당일 변수(파이널 등)용으로 둔다.
 
 - **Agent Name**: `Knowledge_Specialist`
 - **Model**: `Claude Sonnet 4`

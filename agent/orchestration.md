@@ -49,19 +49,20 @@
 
 > 일반 상식·안정성을 Supervisor가 직접 처리하면 서브4를 비워 예비 슬롯 2개 확보 가능.
 
-## 챌린지 유형 → 처리 주체 (Supervisor가 라우팅)
+## 맵 아이템(c1~c8) → 처리 주체 (Supervisor가 라우팅)
 
-| 챌린지 유형 | 처리 |
-|---|---|
-| 수학/알고리즘 | → `Code_Specialist` (코드 실행) |
-| 웹 서치 | → `Web_Researcher` (웹 검색) |
-| 일반 상식 | Supervisor 직접 (또는 `Knowledge_Specialist`) |
-| 안정성(safety) | **Supervisor 직접** (Guardrails 전용 보유) |
+| key | 챌린지 | 처리 |
+|---|---|---|
+| c1 | Violent Violet (안정성) | **Supervisor** (Guardrails 전용) |
+| c2 | Blue Brain (코드) | → `Code_Specialist` (Code Interpreter Lambda) |
+| c3 | Memento (메모리) | **Supervisor** (Memory 전용 — 이전에 저장한 정보 회상) |
+| c4 | Dark Prophet (웹) | → `Web_Researcher` (웹 Lambda) |
+| c5 | Bonehead (간단) | Supervisor 직접 (또는 `Knowledge_Specialist`) |
+| c6 | Boss (전 스킬) | **Supervisor가 code+web+memory+safety 조합 위임** |
+| c7 | 코인(+250) | → `Pathfinding`이 수집 |
+| c8 | 스파이크(생명-) | → `Pathfinding`이 회피(avoid_spikes/max_loot) |
 
-| 게임 상황 | 처리 |
-|---|---|
-| 경로/이동 | → `Pathfinding` (막힘 회피·장애물 우회) |
-| 규칙/맵/진행 기억 | **Supervisor 직접** (Memory 전용 보유) |
+→ c1·c3은 Supervisor 전용 기능(Guardrails·Memory)을 테스트하므로 반드시 Supervisor가 처리.
 
 ## 점수 레버 반영
 

@@ -1,276 +1,188 @@
-"""AgentCore Lambda — Pathfinding (보물=종착 Orienteering, mapId 기반, 전략 지원)
+"""AgentCore Lambda — pathfinding-lambda (실제 게임 인터페이스)
 
-핵심 게임 규칙 반영:
-- 보물(treasure) 도달 시 게임 종료 → 보물은 경로의 '종착 노드'. 코인을 최대한
-  모은 뒤 마지막에 보물로 가는 경로를 만든다. (default 'swift'는 최단 보물행이라
-  코인을 거의 못 모음 → 개선 전략 'max_loot'가 핵심)
-- 맵 아이템은 mapId(c1-cN)로 식별. items[].id 사용, route도 mapId로 반환.
-- 장애물(spikes 등)은 통과 시 생명 -1, 회피 가능 → 통과 비용 가산으로 우회.
-- 막힘/벽은 grid=1 → 절대 경유 안 함(강제 통과 시 게임 종료).
+게임이 제공하는 기본 pathfinding-lambda를 확장한 버전. 기본 'swift'(보물 최단)는
+점수가 낮다 → 보물 도달=게임 종료이므로 코인/챌린지를 최대한 모은 뒤 마지막에 보물로
+가는 전략들을 추가한다.
+
+입력 (게임 원본과 동일):
+  event(body) = { "game_map": [[cell,...],...], "start_pos": [r,c], "strategy": "<name>" }
+  cell 타입: "start" "normal" "wall" "treasure" 및 c1..c8
+    c1 Violent Violet(가드레일/안정성) · c2 Blue Brain(코드) · c3 Memento(메모리)
+    c4 Dark Prophet(웹 스크래핑) · c5 Bonehead(간단) · c6 Boss(전 스킬)
+    c7 코인(250점) · c8 스파이크(밟으면 생명 감소)
+출력 (게임 원본과 동일):
+  { "path": ["right","up",...], "steps": N, "start_position": [r,c] }
 
 전략(navigation prompt: "use strategy <name>"):
-- swift     : 코인 무시, 보물로 최단 (게임 빨리 종료 — 비권장)
-- get_coins : 도달 가능한 모든 코인 수집 후 보물
-- max_loot  : 시간 예산 내 코인 가치 합 최대화 후 보물 (★권장, Orienteering)
+  swift        - 보물로 최단 (기본, 점수 낮음)
+  get_coins    - c7 코인 수집 후 보물
+  avoid_spikes - c8 스파이크를 강하게 회피하며 코인 수집 후 보물
+  get_challenges - 코인 + 풀 수 있는 챌린지 방문 후 보물
+  max_loot     - 가치/거리 기반으로 코인+챌린지 가치합 최대 순회 후 보물 (★권장)
 
-[중요/실격 방지] 본 Lambda는 외부 모델(LLM/API)을 호출하지 않는 순수 알고리즘이다.
-정답 하드코딩·외부 모델 사용은 실격 사유 → 절대 추가하지 말 것.
-
-Tool 계약:
-  event = {
-    "start": [r,c] | "start",
-    "grid":  [[0,1,...], ...],            # 0=통로, 1=벽/막힘
-    "items": [
-      {"id":"c1","cell":[r,c],"kind":"coin|challenge|treasure|obstacle",
-       "value":<코인 가치, 코인/챌린지>, "solve_cost":<도착 후 스텝, 챌린지>}
-    ],
-    "time_budget": <int>,
-    "strategy": "max_loot" | "get_coins" | "swift",
-    "obstacle_penalty": <int, 기본 4>
-  }
-  return { "route": ["c3","c1",...,"<treasure id>"], "expected_value": <int>, "used_steps": <int> }
+[실격 방지] 본 코드는 외부 모델/API 호출이 없고, 챌린지 '정답'을 하드코딩하지 않는다.
+아래 CELL_VALUE는 '경로 우선순위용 점수 추정치'일 뿐 정답이 아니다(수정 가능).
 """
-from __future__ import annotations
-
 import heapq
 import json
-import random
+from collections import deque
 
 INF = float("inf")
+DIRECTIONS = [(-1, 0, "up"), (1, 0, "down"), (0, -1, "left"), (0, 1, "right")]
+
+COINS = {"c7"}
+SPIKES = {"c8"}
+CHALLENGES = {"c1", "c2", "c3", "c4", "c5", "c6"}
+
+# 경로 우선순위용 가치 추정(정답 아님, 자유 수정). 당일 실제 보상으로 보정.
+CELL_VALUE = {"c7": 250, "c2": 600, "c4": 500, "c5": 200, "c3": 400, "c1": 300, "c6": 1000}
+SPIKE_PENALTY = 50  # 스파이크 회피 강도(경로 비용 가산)
 
 
-# ----- Dijkstra: 막힘=통과불가, 장애물=비용 가산(우회) -------------------
-def _dijkstra(grid, src, obstacles, penalty):
-    H, W = len(grid), len(grid[0])
-    src = tuple(src)
-    dist = {src: 0}
-    pq = [(0, src)]
+def lambda_handler(event, context=None):
+    try:
+        if isinstance(event, dict) and "body" in event:
+            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+        else:
+            body = event
+
+        game_map = body.get("game_map", [])
+        start_pos = tuple(body.get("start_pos", [0, 0]))
+        strategy = _parse_strategy(body.get("strategy", "swift"))
+        if not game_map:
+            return _err(400, "Missing game_map")
+
+        rows, cols = len(game_map), len(game_map[0])
+        treasure = _find(game_map, rows, cols, "treasure")
+        if not treasure:
+            return _err(400, "No treasure found on map")
+
+        path = _plan(game_map, rows, cols, start_pos, treasure, strategy)
+        result = {"path": path, "steps": len(path), "start_position": list(start_pos),
+                  "strategy": strategy}
+        print(f"RESULT: strategy={strategy} steps={len(path)}")
+        return {"statusCode": 200, "body": json.dumps(result)}
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return _err(500, str(e))
+
+
+def _parse_strategy(s):
+    s = (s or "swift").strip().lower().replace(" ", "_")
+    s = s.replace("use_strategy_", "").replace("strategy_", "")
+    return s if s in {"swift", "get_coins", "avoid_spikes", "get_challenges", "max_loot"} else "swift"
+
+
+def _err(code, msg):
+    return {"statusCode": code, "body": json.dumps({"error": msg})}
+
+
+def _find(game_map, rows, cols, kind):
+    for r in range(rows):
+        for c in range(cols):
+            if game_map[r][c] == kind:
+                return (r, c)
+    return None
+
+
+def _cells_in(game_map, rows, cols, kinds):
+    return [(r, c) for r in range(rows) for c in range(cols) if game_map[r][c] in kinds]
+
+
+# ----- 스파이크 가중 Dijkstra (이동 경로 복원) --------------------------
+def _dijkstra(game_map, rows, cols, start, spike_penalty):
+    dist = {start: 0}
+    parent = {start: (None, None)}
+    pq = [(0, start)]
     while pq:
         d, (r, c) = heapq.heappop(pq)
         if d > dist.get((r, c), INF):
             continue
-        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        for dr, dc, mv in DIRECTIONS:
             nr, nc = r + dr, c + dc
-            if 0 <= nr < H and 0 <= nc < W and grid[nr][nc] == 0:
-                step = 1 + (penalty if (nr, nc) in obstacles else 0)
+            if 0 <= nr < rows and 0 <= nc < cols and game_map[nr][nc] != "wall":
+                step = 1 + (spike_penalty if game_map[nr][nc] in SPIKES else 0)
                 if d + step < dist.get((nr, nc), INF):
                     dist[(nr, nc)] = d + step
+                    parent[(nr, nc)] = ((r, c), mv)
                     heapq.heappush(pq, (d + step, (nr, nc)))
-    return dist
+    return dist, parent
 
 
-# ----- 비용/가치 (보물 종착 항 포함) ------------------------------------
-def _cost(route, dm, solve, terminal):
-    """start(0) → route → terminal(보물). 도달 불가 시 INF."""
-    cur, used = 0, 0
-    for nid in route:
-        if nid not in dm.get(cur, {}):
-            return INF
-        used += dm[cur][nid] + solve[nid]
-        cur = nid
-    if terminal is not None:
-        if terminal not in dm.get(cur, {}):
-            return INF
-        used += dm[cur][terminal]
-    return used
+def _moves_to(parent, goal):
+    moves, cur = [], goal
+    while parent.get(cur, (None, None))[0] is not None:
+        prev, mv = parent[cur]
+        moves.append(mv)
+        cur = prev
+    moves.reverse()
+    return moves
 
 
-def _value(route, val):
-    return sum(val[n] for n in route)
+# ----- 전략 디스패치 ---------------------------------------------------
+def _plan(game_map, rows, cols, start, treasure, strategy):
+    if strategy == "swift":
+        return _route(game_map, rows, cols, [], start, treasure, 0)
+    if strategy == "get_coins":
+        return _ordered(game_map, rows, cols, start, treasure, COINS, 0)
+    if strategy == "avoid_spikes":
+        return _ordered(game_map, rows, cols, start, treasure, COINS, SPIKE_PENALTY)
+    if strategy == "get_challenges":
+        return _ordered(game_map, rows, cols, start, treasure, COINS | CHALLENGES, SPIKE_PENALTY)
+    # max_loot (권장)
+    return _ordered(game_map, rows, cols, start, treasure, COINS | CHALLENGES, SPIKE_PENALTY)
 
 
-def _prefix(route, dm, solve, val, terminal, budget):
-    """예산 안에 '보물까지 포함'해 방문 가능한 prefix."""
-    out = []
-    for k in range(len(route), -1, -1):
-        if _cost(route[:k], dm, solve, terminal) <= budget:
-            out = route[:k]
-            break
-    return out
-
-
-# ----- Orienteering 솔버 (보물 종착) -----------------------------------
-def _greedy(ids, dm, solve, val, terminal, budget):
-    cur, used, route = 0, 0, []
-    rem = set(ids)
-    while True:
-        best, best_ratio, best_step = None, -1.0, 0
-        for nid in rem:
-            if nid not in dm.get(cur, {}):
-                continue
-            step = dm[cur][nid] + solve[nid]
-            # 이 노드 추가 후에도 보물까지 갈 수 있어야 함
-            if terminal is not None and terminal not in dm.get(nid, {}):
-                continue
-            tail = dm[nid][terminal] if terminal is not None else 0
-            if used + step + tail > budget:
-                continue
-            ratio = val[nid] / max(step, 1)
-            if ratio > best_ratio:
-                best, best_ratio, best_step = nid, ratio, step
+def _ordered(game_map, rows, cols, start, treasure, target_kinds, spike_penalty):
+    """가치/거리 탐욕 순서로 타깃 방문 후 보물. 이동 경로(moves) 반환."""
+    targets = set(_cells_in(game_map, rows, cols, target_kinds))
+    targets.discard(start)
+    order, cur = [], start
+    while targets:
+        dist, _ = _dijkstra(game_map, rows, cols, cur, spike_penalty)
+        best, best_ratio = None, -1.0
+        for t in targets:
+            if t in dist and dist[t] > 0:
+                ratio = CELL_VALUE.get(game_map[t[0]][t[1]], 0) / dist[t]
+                if ratio > best_ratio:
+                    best, best_ratio = t, ratio
         if best is None:
             break
-        used += best_step
-        route.append(best)
-        rem.discard(best)
+        order.append(best)
+        targets.discard(best)
         cur = best
-    return route
+    return _route(game_map, rows, cols, order, start, treasure, spike_penalty)
 
 
-def _two_opt(route, dm, solve, val, terminal, budget):
-    improved = True
-    while improved:
-        improved = False
-        base = _cost(route, dm, solve, terminal)
-        for i in range(len(route) - 1):
-            for j in range(i + 1, len(route)):
-                cand = route[:i] + route[i:j + 1][::-1] + route[j + 1:]
-                c = _cost(cand, dm, solve, terminal)
-                if c < base - 1e-9 and c <= budget:
-                    route, base, improved = cand, c, True
-    return route
+def _route(game_map, rows, cols, order, start, treasure, spike_penalty):
+    """start → order[...] → treasure 를 잇는 이동 경로(moves)."""
+    path, cur = [], start
+    for cell in list(order) + [treasure]:
+        dist, parent = _dijkstra(game_map, rows, cols, cur, spike_penalty)
+        if cell == cur:
+            continue
+        if cell not in parent:
+            continue  # 도달 불가 — 건너뜀
+        path.extend(_moves_to(parent, cell))
+        cur = cell
+    return path
 
 
-def _insert(route, ids, dm, solve, val, terminal, budget):
-    inr = set(route)
-    changed = True
-    while changed:
-        changed = False
-        base = _cost(route, dm, solve, terminal)
-        best_gain, best = -1.0, None
-        for nid in ids:
-            if nid in inr:
-                continue
-            for pos in range(len(route) + 1):
-                cand = route[:pos] + [nid] + route[pos:]
-                c = _cost(cand, dm, solve, terminal)
-                if c <= budget:
-                    gain = val[nid] / max(c - base, 1)
-                    if gain > best_gain:
-                        best_gain, best = gain, (cand, nid)
-        if best:
-            route, nid = best
-            inr.add(nid)
-            changed = True
-    return route
-
-
-def _local(route, ids, dm, solve, val, terminal, budget):
-    prev = -1
-    while True:
-        route = _two_opt(route, dm, solve, val, terminal, budget)
-        route = _insert(route, ids, dm, solve, val, terminal, budget)
-        v = _value(_prefix(route, dm, solve, val, terminal, budget), val)
-        if v <= prev:
-            break
-        prev = v
-    return _prefix(route, dm, solve, val, terminal, budget)
-
-
-def _ils(ids, dm, solve, val, terminal, budget, iters=60, seed=0):
-    rng = random.Random(seed)
-    cur = _local(_greedy(ids, dm, solve, val, terminal, budget),
-                 ids, dm, solve, val, terminal, budget)
-    best, best_v = cur[:], _value(cur, val)
-    for _ in range(iters):
-        r = cur[:]
-        if len(r) >= 4 and rng.random() < 0.5:
-            a, b, c = sorted(rng.sample(range(1, len(r)), 3))
-            r = r[:a] + r[b:c] + r[a:b] + r[c:]
-        else:
-            for _ in range(rng.randint(1, max(1, len(r) // 3))):
-                if r:
-                    r.pop(rng.randrange(len(r)))
-        r = _local(r, ids, dm, solve, val, terminal, budget)
-        v = _value(r, val)
-        if v >= best_v:
-            best, best_v, cur = r[:], v, r
-    return best
-
-
-# ----- Lambda handler --------------------------------------------------
-def lambda_handler(event, context=None):
-    grid = event["grid"]
-    items = event.get("items", [])
-    budget = int(event.get("time_budget", 0))
-    strategy = event.get("strategy", "max_loot")
-    penalty = int(event.get("obstacle_penalty", 4))
-
-    # mapId <-> 내부 인덱스
-    treasure_item = next((it for it in items if it["kind"] == "treasure"), None)
-    obstacle_cells = set(tuple(it["cell"]) for it in items if it["kind"] == "obstacle")
-    reward_items = [it for it in items if it["kind"] in ("coin", "challenge")]
-
-    start = event.get("start", "start")
-    start_cell = start if isinstance(start, (list, tuple)) else \
-        next((it["cell"] for it in items if it.get("id") == start), [0, 0])
-
-    anchors = [tuple(start_cell)]                    # 0 = start
-    idx_of_id, id_of_idx = {}, {}
-    for it in reward_items:
-        idx = len(anchors)
-        anchors.append(tuple(it["cell"]))
-        idx_of_id[it["id"]] = idx
-        id_of_idx[idx] = it["id"]
-    terminal = None
-    if treasure_item is not None:
-        terminal = len(anchors)
-        anchors.append(tuple(treasure_item["cell"]))
-        id_of_idx[terminal] = treasure_item["id"]
-
-    # 거리행렬 (장애물 회피 가중)
-    dm = {}
-    for i, cell in enumerate(anchors):
-        d = _dijkstra(grid, cell, obstacle_cells, penalty)
-        dm[i] = {j: d[anchors[j]] for j in range(len(anchors)) if anchors[j] in d}
-
-    val = {0: 0}
-    solve = {0: 0}
-    for it in reward_items:
-        idx = idx_of_id[it["id"]]
-        val[idx] = it.get("value", 0)
-        solve[idx] = it.get("solve_cost", 0)
-    if terminal is not None:
-        val[terminal] = treasure_item.get("value", 0)
-        solve[terminal] = treasure_item.get("solve_cost", 0)
-
-    ids = list(idx_of_id.values())
-
-    # 전략
-    if strategy == "swift":
-        route = []                                   # 코인 무시, 보물로 직행
-    elif strategy == "get_coins":
-        coin_ids = [idx_of_id[it["id"]] for it in reward_items if it["kind"] == "coin"]
-        route = _local(coin_ids[:], coin_ids, dm, solve, val, terminal, budget)
-    else:                                            # max_loot (권장)
-        route = _ils(ids, dm, solve, val, terminal, budget, iters=60)
-
-    route = _prefix(route, dm, solve, val, terminal, budget)
-
-    # 보물(종착) 부착
-    route_idx = route + ([terminal] if terminal is not None else [])
-    return {
-        "route": [id_of_idx[i] for i in route_idx],
-        "expected_value": _value(route, val) + (val.get(terminal, 0) if terminal is not None else 0),
-        "used_steps": _cost(route, dm, solve, terminal) if (route or terminal is not None) else 0,
-        "strategy": strategy,
-    }
-
-
-# ----- 로컬 자가검증 ---------------------------------------------------
+# ----- 로컬 자가검증 (가이드 예시 맵) ----------------------------------
 if __name__ == "__main__":
-    demo = {
-        "start": [0, 0],
-        "grid": [[0] * 6 for _ in range(6)],
-        "items": [
-            {"id": "c1", "cell": [1, 3], "kind": "coin",      "value": 100, "solve_cost": 0},
-            {"id": "c2", "cell": [3, 4], "kind": "challenge", "value": 600, "solve_cost": 2},
-            {"id": "c3", "cell": [4, 1], "kind": "coin",      "value": 80,  "solve_cost": 0},
-            {"id": "c4", "cell": [2, 3], "kind": "obstacle",  "value": 0,   "solve_cost": 0},
-            {"id": "c5", "cell": [5, 5], "kind": "treasure",  "value": 300, "solve_cost": 0},
-        ],
-        "time_budget": 24,
-    }
-    for strat in ("swift", "get_coins", "max_loot"):
-        print(strat, json.dumps(lambda_handler(dict(demo, strategy=strat), None),
-                                ensure_ascii=False))
+    game_map = [
+        ["start", "normal", "c5", "normal", "normal", "normal", "c5", "normal", "normal", "c1"],
+        ["normal", "wall", "wall", "normal", "wall", "wall", "wall", "wall", "wall", "normal"],
+        ["c8", "wall", "wall", "c5", "wall", "c7", "c7", "c7", "wall", "c3"],
+        ["normal", "wall", "c8", "normal", "wall", "c8", "wall", "c8", "wall", "normal"],
+        ["normal", "wall", "c7", "normal", "wall", "normal", "normal", "normal", "wall", "normal"],
+        ["c5", "wall", "c7", "normal", "wall", "c5", "wall", "normal", "wall", "c5"],
+        ["normal", "wall", "c7", "normal", "wall", "normal", "wall", "normal", "wall", "normal"],
+        ["c1", "wall", "c8", "normal", "c2", "normal", "wall", "normal", "c4", "normal"],
+        ["normal", "wall", "wall", "wall", "wall", "wall", "wall", "normal", "normal", "c7"],
+        ["c7", "normal", "c3", "normal", "c4", "normal", "c2", "normal", "treasure", "normal"],
+    ]
+    for strat in ("swift", "get_coins", "avoid_spikes", "max_loot"):
+        out = json.loads(lambda_handler(
+            {"game_map": game_map, "start_pos": [0, 0], "strategy": strat})["body"])
+        print(f"{strat:14} steps={out['steps']:3}  path[:8]={out['path'][:8]}")

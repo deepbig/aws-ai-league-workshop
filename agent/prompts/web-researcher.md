@@ -1,8 +1,8 @@
-# Web Researcher Sub-Agent — Edit Sub-Agent 폼 입력값
+# Web Researcher Sub-Agent — Edit Sub-Agent 폼 입력값 (c4 Dark Prophet)
 
 - **Agent Name**: `Web_Researcher`
 - **Model**: `Claude Sonnet 4`
-- **Lambda Tools**: 웹 검색 도구(WebSearch / Browser / 커스텀 검색 Lambda)
+- **Lambda Tools**: 웹 검색/스크래핑 도구(c4 Dark Prophet 챌린지용 — Browser/WebSearch/커스텀 Lambda)
 
 ## System Prompt (그대로 붙여넣기)
 

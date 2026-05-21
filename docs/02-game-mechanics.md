@@ -67,16 +67,23 @@
 - **막힘 구간**: 통과 불가. **강제로 통과하려 하면 게임 강제 종료**(치명적).
   → 경로 유효성이 *생존 직결*. LLM의 경로 추측은 절대 금지, **결정론적 navigate Tool 필수**(잘못된 한 수 = 즉시 게임오버). Guardrails로 막힘 칸 이동 차단.
 
-### 챌린지 (4종, 주제 다양)
+### 맵 아이템 c1~c8 [확정 — pathfinding lambda 맵 정의]
 
-| 유형 | 처리 도구 | 비고 |
-|---|---|---|
-| 일반 상식 | LLM 응답(필요 시 웹서치 검증) | 정확·간결 |
-| 수학/알고리즘 | **CodeExecution** (코드 실행) | 정답률 100% 목표 |
-| 안정성(safety) | 안전·책임성 있는 응답 + **Guardrails** | Guardrails가 *점수 역할* |
-| **웹 서치** | **웹 검색 도구** 필요 | 최신 정보 검색 |
+| key | 이름 | 정체 | 처리 주체 |
+|---|---|---|---|
+| **c1** | Violent Violet | 가드레일/안정성 챌린지 | **Supervisor** (Guardrails 전용) |
+| **c2** | Blue Brain | 코드 실행 챌린지 | `Code_Specialist` (Code Interpreter Lambda) |
+| **c3** | Memento | **메모리 챌린지**(이전 정보 기억) | **Supervisor** (Memory 전용) |
+| **c4** | Dark Prophet | 웹 스크래핑/검색 챌린지 | `Web_Researcher` (웹 Lambda) |
+| **c5** | Bonehead | 간단한 질문(스킬 거의 불필요) | Supervisor / `Knowledge_Specialist` |
+| **c6** | Boss | 모든 스킬 요구 | **Supervisor가 다중 위임 오케스트레이션** |
+| **c7** | 코인 | 점수(+250), 챌린지 없음 | `Pathfinding`이 수집 |
+| **c8** | 스파이크 | 밟으면 생명 감소(장애물) | `Pathfinding`이 회피 |
+| — | start/normal/wall/treasure | 시작/통로/벽/보물 | — |
 
-- 챌린지는 **점수 획득 / 차감**(오답 시 감점). → 불확실하면 신중.
+- 챌린지는 **정답 시 +코인 / 오답 시 ♥-1**(생명=점수이므로 이중 손해). 불확실하면 SKIP.
+- c3 Memento는 **Memory를, c1 Violent Violet은 Guardrails를** 테스트 → 둘 다 Supervisor 전용 기능.
+- c6 Boss는 코드+웹+메모리+안전을 모두 요구 → Supervisor가 서브에이전트들을 조합.
 
 ### 종료 조건 [확정 — "How it works > Additional Rules"]
 

@@ -1,59 +1,64 @@
 # agent/lambdas/ — SageMaker 코드 에디터 붙여넣기용
 
-워크샵 "도구 > AWS Lambda 함수" 슬롯에 등록할 Python 코드. **표준 라이브러리만** 사용.
+워크샵 Lambda(`pathfinding-lambda`). **표준 라이브러리만** 사용.
 
-> **실격 주의**: Lambda 도구 안에서 **외부 모델/LLM/API 호출 금지**, **정답 하드코딩 금지**.
-> 본 코드는 순수 알고리즘이라 안전. 절대 외부 호출/하드코딩을 추가하지 말 것.
+> **편집 주의**: 연필 아이콘은 에디터만 열 뿐 해당 lambda로 딥링크하지 않음.
+> AWS 플러그인에서 `pathfinding-lambda`의 `lambda_function.py`를 직접 찾아 편집할 것.
+> **실격 주의**: 도구 안에서 외부 모델/API 호출 금지, 정답 하드코딩 금지.
 
-| 파일 | UI 이름(권장) | 용도 |
+| 파일 | UI 이름 | 용도 |
 |---|---|---|
-| [pathfinding.py](pathfinding.py) | `Pathfinding` | 보물=종착 Orienteering 경로(전략 swift/get_coins/**max_loot**) |
+| [pathfinding.py](pathfinding.py) | `pathfinding-lambda` | 보물=종착 전략 경로(swift/get_coins/avoid_spikes/get_challenges/**max_loot**) |
 
-## pathfinding.py — 무엇을 개선했나
+## 실제 인터페이스 (게임 원본과 동일)
 
-기본 제공 Pathfinding은 `swift`(보물 직행)·`get_coins`만 지원. 그러나 **보물 도달 =
-게임 종료**라 swift는 코인을 거의 못 모은다. 그래서 **`max_loot` 전략**을 추가:
-시간 예산 내 코인 가치 합을 최대화하고 **마지막에 보물로 종료**(검증된 Orienteering,
-docs/08). 자가검증 예: swift=300 < get_coins=480 < **max_loot=1080**.
-
-### Tool 계약 (mapId 기반)
-
-```json
-event = {
-  "start": [r,c],
-  "grid":  [[0,1,...], ...],            // 0=통로 1=벽/막힘
-  "items": [
-    {"id":"c1","cell":[r,c],"kind":"coin|challenge|treasure|obstacle",
-     "value":<코인>,"solve_cost":<스텝>}
-  ],
-  "time_budget": <int>,
-  "strategy": "max_loot | get_coins | swift",
-  "obstacle_penalty": 4
-}
-return { "route": ["c3","c1",...,"<treasure id>"], "expected_value": <int>,
-         "used_steps": <int>, "strategy": "max_loot" }
+```
+event(body) = { "game_map": [["start","normal","c7",...], ...],
+                "start_pos": [r,c], "strategy": "max_loot" }
+return        = { "path": ["right","up",...], "steps": N, "start_position": [r,c] }
 ```
 
-- **route는 mapId(c1..cN) 순서**, 항상 보물 id로 끝남(보물=종착).
-- 막힘/벽 = grid 1 → 미경유. 장애물(spikes) = `obstacle_penalty` 가산으로 우회.
-- **Navigation prompt**(Submit & Play 직전): `use strategy max_loot`.
+- `game_map` 셀 타입: `start` `normal` `wall` `treasure` + **c1~c8**
+  - c1 Violent Violet(가드레일) · c2 Blue Brain(코드) · c3 Memento(메모리)
+  - c4 Dark Prophet(웹) · c5 Bonehead(간단) · c6 Boss(전 스킬)
+  - c7 코인(+250) · c8 스파이크(생명 -)
+- 출력 `path`는 **이동 배열**(up/down/left/right). 항상 보물에서 끝남.
+
+## 무엇을 개선했나
+
+기본 제공은 `swift`(보물 최단)·`get_coins`만 지원. 보물 도달=게임 종료라 swift는
+코인을 거의 못 모은다. 그래서 전략을 추가:
+- `avoid_spikes` : c8을 강하게 회피(생명 보존=점수)
+- `get_challenges` : 코인 + 챌린지 셀(c1~c6) 순회 후 보물
+- `max_loot` (★권장) : 가치/거리 탐욕으로 코인+챌린지 최대 순회 후 보물
+
+자가검증(가이드 예시 맵, 모두 유효·보물 종착): swift 17 / get_coins 47 /
+avoid_spikes 61(스파이크 hit 최소) / max_loot 89(코인 8개 전부 + 챌린지 최다).
+
+> `CELL_VALUE`(경로 우선순위용 점수 추정)는 자유 수정 — 정답이 아니라 라우팅 가중치.
+> 당일 실제 챌린지 보상으로 보정.
+
+## 전략 활성화
+
+Navigation prompt: `use strategy max_loot` (또는 get_coins / avoid_spikes / get_challenges).
+파이널(finale)에서는 레벨별로 즉석 전략이 필요할 수 있음 → 전략을 추가로 정의해 대비.
 
 ## 배포
 
-1. UI "AWS Lambda 함수" `+` → SageMaker 에디터에 [pathfinding.py](pathfinding.py) 붙여넣기.
-2. Handler: `lambda_handler`. 저장 → Pathfinding 서브에이전트에 연결.
+1. AWS 플러그인에서 `pathfinding-lambda` → `lambda_function.py` 열기.
+2. [pathfinding.py](pathfinding.py) 내용으로 교체. Handler: `lambda_handler`. 저장.
 
-## 코드 실행 Lambda (Code 챌린지용)
+## 원본 복구
 
-c2 같은 코드 챌린지는 **Amazon Bedrock Code Interpreter 기반 Lambda**가 필요
-("build a lambda tool that can handle writing and executing code"). 이 도구는
-Bedrock Code Interpreter API로 코드를 실행하고 결과를 반환하도록 구성한다
-(외부 LLM 호출 아님 — 실격 아님). Code_Specialist 서브에이전트에 연결.
+기본 코드로 되돌리려면 게임 가이드의 "Original Code"를 사용(swift/get_coins만 지원).
+
+## 코드 실행 Lambda (c2 Blue Brain용)
+
+Amazon Bedrock Code Interpreter로 코드를 실행하는 Lambda를 별도 구성해
+Code_Specialist에 연결(외부 LLM 호출 아님 — 실격 아님).
 
 ## 로컬 검증
 
 ```bash
-python3 agent/lambdas/pathfinding.py    # swift/get_coins/max_loot 비교 출력
-python3 sim/bench.py                     # 진짜 최적해(Held-Karp) 대비 %opt
-python3 sim/robustness.py                # 규칙 레짐 6종 강건성
+python3 agent/lambdas/pathfinding.py    # 전략별 steps/path 출력
 ```
