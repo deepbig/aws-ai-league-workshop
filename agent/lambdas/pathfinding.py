@@ -196,6 +196,9 @@ def _ordered(game_map, rows, cols, start, treasure, pred, spike_penalty):
     targets.discard(start)
     # 안전: 빨간 문(c30)은 빨간 열쇠(c40)가 맵에 있을 때만 방문(없으면 ♥-5).
     has_key = any(game_map[r][c] == KEY_CELL for (r, c) in targets)
+    has_door = any(game_map[r][c] == DOOR_CELL for (r, c) in targets)
+    # 열쇠 획득 = 문(+1000) 잠금해제 → 열쇠 가치에 문 가치를 합산해 우선 픽업.
+    door_value = _cell_value(DOOR_CELL) if (has_key and has_door) else 0
     if not has_key:
         targets = {t for t in targets if game_map[t[0]][t[1]] != DOOR_CELL}
     order, cur, key_taken = [], start, False
@@ -204,10 +207,13 @@ def _ordered(game_map, rows, cols, start, treasure, pred, spike_penalty):
         best, best_ratio = None, -1.0
         for t in targets:
             v = game_map[t[0]][t[1]]
-            if v == DOOR_CELL and not key_taken:   # 열쇠 먼저
+            if v == DOOR_CELL and not key_taken:   # 열쇠 먼저 (문은 열쇠 획득 후)
                 continue
             if t in dist and dist[t] > 0:
-                ratio = _cell_value(v) / dist[t]
+                val = _cell_value(v)
+                if v == KEY_CELL and not key_taken:
+                    val += door_value              # 열쇠 = 자기 값 + 문 잠금해제 값
+                ratio = val / dist[t]
                 if ratio > best_ratio:
                     best, best_ratio = t, ratio
         if best is None:
