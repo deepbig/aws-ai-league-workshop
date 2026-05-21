@@ -145,8 +145,8 @@ def _cells_where(game_map, rows, cols, pred):
     return [(r, c) for r in range(rows) for c in range(cols) if pred(game_map[r][c])]
 
 
-# ----- 스파이크 가중 Dijkstra (이동 경로 복원) --------------------------
-def _dijkstra(game_map, rows, cols, start, spike_penalty):
+# ----- 스파이크 가중 Dijkstra (이동 경로 복원, blocked 칸은 통행 불가) ---
+def _dijkstra(game_map, rows, cols, start, spike_penalty, blocked=frozenset()):
     dist = {start: 0}
     parent = {start: (None, None)}
     pq = [(0, start)]
@@ -156,7 +156,8 @@ def _dijkstra(game_map, rows, cols, start, spike_penalty):
             continue
         for dr, dc, mv in DIRECTIONS:
             nr, nc = r + dr, c + dc
-            if 0 <= nr < rows and 0 <= nc < cols and game_map[nr][nc] != "wall":
+            if 0 <= nr < rows and 0 <= nc < cols and game_map[nr][nc] != "wall" \
+                    and (nr, nc) not in blocked:
                 step = 1 + (spike_penalty if game_map[nr][nc] in SPIKES else 0)
                 if d + step < dist.get((nr, nc), INF):
                     dist[(nr, nc)] = d + step
@@ -180,63 +181,66 @@ def _plan(game_map, rows, cols, start, treasure, strategy):
     is_coin = lambda v: v in COINS
     is_coin_or_chal = lambda v: v in COINS or _is_challenge(v)
     if strategy == "swift":
-        return _route(game_map, rows, cols, [], start, treasure, 0)
+        return _build(game_map, rows, cols, start, treasure, lambda v: False, 0)
     if strategy == "get_coins":
-        return _ordered(game_map, rows, cols, start, treasure, is_coin, 0)
+        return _build(game_map, rows, cols, start, treasure, is_coin, 0)
     if strategy == "avoid_spikes":
-        return _ordered(game_map, rows, cols, start, treasure, is_coin, SPIKE_PENALTY)
-    if strategy == "get_challenges":
-        return _ordered(game_map, rows, cols, start, treasure, is_coin_or_chal, SPIKE_PENALTY)
-    return _ordered(game_map, rows, cols, start, treasure, is_coin_or_chal, SPIKE_PENALTY)
+        return _build(game_map, rows, cols, start, treasure, is_coin, SPIKE_PENALTY)
+    # get_challenges / max_loot
+    return _build(game_map, rows, cols, start, treasure, is_coin_or_chal, SPIKE_PENALTY)
 
 
-def _ordered(game_map, rows, cols, start, treasure, pred, spike_penalty):
-    """가치/거리 탐욕 순서로 타깃 방문 후 보물. 이동 경로(moves) 반환."""
+def _build(game_map, rows, cols, start, treasure, pred, spike_penalty):
+    """가치/거리 탐욕으로 타깃을 순회 후 보물로 종료. 이동 경로(moves) 반환.
+
+    ★ 빨간 문(c30): 빨간 열쇠(c40)를 얻기 전까지 '통행 불가'(벽 취급).
+    밟으면 ♥-5라서 목적지뿐 아니라 '경유'도 막아야 한다. 열쇠 획득 후 통행/방문 허용.
+    """
+    door_cells = frozenset(_cells_where(game_map, rows, cols, lambda v: v == DOOR_CELL))
+    has_key = bool(_cells_where(game_map, rows, cols, lambda v: v == KEY_CELL))
+    door_value = _cell_value(DOOR_CELL) if (has_key and door_cells) else 0
+
     targets = set(_cells_where(game_map, rows, cols, pred))
     targets.discard(start)
-    # 안전: 빨간 문(c30)은 빨간 열쇠(c40)가 맵에 있을 때만 방문(없으면 ♥-5).
-    has_key = any(game_map[r][c] == KEY_CELL for (r, c) in targets)
-    has_door = any(game_map[r][c] == DOOR_CELL for (r, c) in targets)
-    # 열쇠 획득 = 문(+1000) 잠금해제 → 열쇠 가치에 문 가치를 합산해 우선 픽업.
-    door_value = _cell_value(DOOR_CELL) if (has_key and has_door) else 0
     if not has_key:
-        targets = {t for t in targets if game_map[t[0]][t[1]] != DOOR_CELL}
-    order, cur, key_taken = [], start, False
+        targets -= door_cells   # 열쇠 없으면 문은 타깃에서 제외
+
+    path, cur, key_taken = [], start, False
     while targets:
-        dist, _ = _dijkstra(game_map, rows, cols, cur, spike_penalty)
-        best, best_ratio = None, -1.0
+        blocked = frozenset() if key_taken else door_cells   # 열쇠 전엔 문 통행 불가
+        dist, parent = _dijkstra(game_map, rows, cols, cur, spike_penalty, blocked)
+        best, best_ratio, best_parent = None, -1.0, parent
         for t in targets:
             v = game_map[t[0]][t[1]]
-            if v == DOOR_CELL and not key_taken:   # 열쇠 먼저 (문은 열쇠 획득 후)
+            if v == DOOR_CELL and not key_taken:
                 continue
             if t in dist and dist[t] > 0:
                 val = _cell_value(v)
                 if v == KEY_CELL and not key_taken:
-                    val += door_value              # 열쇠 = 자기 값 + 문 잠금해제 값
+                    val += door_value          # 열쇠 = 자기 값 + 문 잠금해제 값
                 ratio = val / dist[t]
                 if ratio > best_ratio:
                     best, best_ratio = t, ratio
         if best is None:
             break
+        path.extend(_moves_to(best_parent, best))
         if game_map[best[0]][best[1]] == KEY_CELL:
             key_taken = True
-        order.append(best)
         targets.discard(best)
         cur = best
-    return _route(game_map, rows, cols, order, start, treasure, spike_penalty)
 
-
-def _route(game_map, rows, cols, order, start, treasure, spike_penalty):
-    """start → order[...] → treasure 를 잇는 이동 경로(moves)."""
-    path, cur = [], start
-    for cell in list(order) + [treasure]:
-        dist, parent = _dijkstra(game_map, rows, cols, cur, spike_penalty)
-        if cell == cur:
-            continue
-        if cell not in parent:
-            continue   # 도달 불가 — 건너뜀
-        path.extend(_moves_to(parent, cell))
-        cur = cell
+    # 보물로 마무리 (열쇠 전이면 문 회피)
+    blocked = frozenset() if key_taken else door_cells
+    dist, parent = _dijkstra(game_map, rows, cols, cur, spike_penalty, blocked)
+    if cur == treasure:
+        return path
+    if treasure in parent:
+        path.extend(_moves_to(parent, treasure))
+        return path
+    # 문을 피해선 보물 도달 불가(드묾) → 부득이 일반 경로
+    _, parent2 = _dijkstra(game_map, rows, cols, cur, spike_penalty, frozenset())
+    if treasure in parent2:
+        path.extend(_moves_to(parent2, treasure))
     return path
 
 
